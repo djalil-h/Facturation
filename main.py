@@ -3,10 +3,22 @@ from services.user_service import create_admin
 
 from UI.app import FacturationApp
 
-create_database()
 
-create_admin()
+def main():
 
-app = FacturationApp()
+    create_database()
 
-app.mainloop()
+    create_admin()
+
+    app = FacturationApp()
+
+    app.protocol(
+        "WM_DELETE_WINDOW",
+        app.on_close
+    )
+
+    app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
