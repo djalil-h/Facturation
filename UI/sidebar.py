@@ -2,8 +2,6 @@ import ttkbootstrap as tb
 
 
 class Sidebar(tb.Frame):
-    """Main navigation sidebar."""
-
     def __init__(self, master):
         super().__init__(master, width=260, bootstyle="light")
         self.master = master
@@ -24,7 +22,7 @@ class Sidebar(tb.Frame):
 
         tb.Separator(self).pack(fill="x", padx=15, pady=5)
 
-        menus = (
+        menus = [
             ("dashboard", "🏠 Tableau de bord", self.master.show_dashboard),
             ("fournisseurs", "📦 Fournisseurs", self.master.show_fournisseurs),
             ("factures", "🧾 Factures", self.master.show_factures),
@@ -33,7 +31,7 @@ class Sidebar(tb.Frame):
             ("utilisateurs", "👥 Utilisateurs", self.master.show_utilisateurs),
             ("journal", "🛡 Journal", self.master.show_journal),
             ("parametres", "⚙ Paramètres", self.master.show_parametres),
-        )
+        ]
 
         for key, text, command in menus:
             self.add_button(key, text, command)
@@ -55,21 +53,21 @@ class Sidebar(tb.Frame):
         ).pack(fill="x", padx=15, pady=15)
 
     def add_button(self, key, text, command):
-        button = tb.Button(
+        btn = tb.Button(
             self,
             text=text,
             command=command,
             bootstyle="light",
             width=25,
         )
-        button.pack(fill="x", padx=12, pady=4)
-        self.buttons[key] = button
+        btn.pack(fill="x", padx=12, pady=4)
+        self.buttons[key] = btn
 
     def select_menu(self, selected):
         for key, button in self.buttons.items():
             button.configure(bootstyle="primary" if key == selected else "light")
 
-    def set_user(self, username=None):
+    def set_user(self, username):
         self.lbl_user.configure(
             text=f"Utilisateur : {username}" if username else "Utilisateur : Invité"
         )
@@ -78,6 +76,4 @@ class Sidebar(tb.Frame):
         from tkinter import messagebox
 
         if messagebox.askyesno("Déconnexion", "Voulez-vous vous déconnecter ?"):
-            # Le vrai écran de connexion sera branché ici lorsque le flux
-            # d'authentification UI sera ajouté.
-            self.master.destroy()
+            self.master.logout()
