@@ -5,15 +5,16 @@ from UI.topbar import TopBar
 
 
 class FacturationApp(tb.Window):
-    """Main application window and navigation controller."""
+    """Fenêtre principale de l'application de facturation."""
 
     def __init__(self):
         super().__init__(themename="flatly")
 
         self.title("Facturation - Pharmacie Hamzaoui Hamid")
         self.geometry("1550x900")
-        self.minsize(1400, 800)
+        self.minsize(1200, 750)
         self.configure(bg="#F5F7FA")
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.current_user = None
         self.current_view = None
@@ -47,48 +48,45 @@ class FacturationApp(tb.Window):
         for widget in self.content.winfo_children():
             widget.destroy()
 
-    def show_view(self, view_class):
+    def show_view(self, view_class, title, menu_key):
         self.clear_content()
         self.current_view = view_class(self.content)
         self.current_view.grid(row=0, column=0, sticky="nsew")
-
-    def _navigate(self, view_class, title, menu_key):
-        self.show_view(view_class)
         self.topbar.set_page_title(title)
         self.set_title(title)
         self.sidebar.select_menu(menu_key)
 
     def show_dashboard(self):
-        from UI.dashboard import Dashboard
-        self._navigate(Dashboard, "Tableau de bord", "dashboard")
+        from UI.views.dashboard import Dashboard
+        self.show_view(Dashboard, "Tableau de bord", "dashboard")
 
     def show_fournisseurs(self):
-        from UI.fournisseurs import FournisseursView
-        self._navigate(FournisseursView, "Fournisseurs", "fournisseurs")
+        from UI.views.fournisseurs import FournisseursView
+        self.show_view(FournisseursView, "Fournisseurs", "fournisseurs")
 
     def show_factures(self):
-        from UI.factures import FacturesView
-        self._navigate(FacturesView, "Factures", "factures")
+        from UI.views.factures import FacturesView
+        self.show_view(FacturesView, "Factures", "factures")
 
     def show_paiements(self):
-        from UI.paiements import PaiementsView
-        self._navigate(PaiementsView, "Paiements", "paiements")
+        from UI.views.paiements import PaiementsView
+        self.show_view(PaiementsView, "Paiements", "paiements")
 
     def show_historique(self):
-        from UI.historique import HistoriqueView
-        self._navigate(HistoriqueView, "Historique", "historique")
+        from UI.views.historique import HistoriqueView
+        self.show_view(HistoriqueView, "Historique", "historique")
 
     def show_utilisateurs(self):
-        from UI.utilisateurs import UtilisateursView
-        self._navigate(UtilisateursView, "Utilisateurs", "utilisateurs")
+        from UI.views.utilisateurs import UtilisateursView
+        self.show_view(UtilisateursView, "Utilisateurs", "utilisateurs")
 
     def show_journal(self):
-        from UI.journal import JournalView
-        self._navigate(JournalView, "Journal administrateur", "journal")
+        from UI.views.journal import JournalView
+        self.show_view(JournalView, "Journal", "journal")
 
     def show_parametres(self):
-        from UI.parametres import ParametresView
-        self._navigate(ParametresView, "Paramètres", "parametres")
+        from UI.views.parametres import ParametresView
+        self.show_view(ParametresView, "Paramètres", "parametres")
 
     def set_current_user(self, user):
         self.current_user = user
@@ -104,6 +102,10 @@ class FacturationApp(tb.Window):
 
     def set_title(self, titre):
         self.title(f"Facturation - Pharmacie Hamzaoui Hamid | {titre}")
+
+    def logout(self):
+        self.set_current_user(None)
+        self.show_dashboard()
 
     def on_close(self):
         self.destroy()
