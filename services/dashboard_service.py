@@ -14,19 +14,9 @@ class DashboardService:
         session = get_session()
         try:
             toutes = session.query(Facture).options(selectinload(Facture.fournisseur)).all()
+            factures_normales = [f for f in toutes if getattr(f, "type_piece", "Facture") != "Avoir"]
+            avoirs = [f for f in toutes if getattr(f, "type_piece", "Facture") == "Avoir"]
 
-            factures_normales = [
-                f for f in toutes
-                if getattr(f, "type_piece", "Facture") != "Avoir"
-            ]
-            avoirs = [
-                f for f in toutes
-                if getattr(f, "type_piece", "Facture") == "Avoir"
-            ]
-
-            # Une dette réelle tient compte des paiements ET des avoirs.
-            # Les avoirs sont toujours comptés en valeur positive dans le
-            # calcul, car ils diminuent le solde fournisseur.
             montant_total = sum(float(f.montant or 0) for f in factures_normales)
             montant_paye = sum(float(f.montant_paye or 0) for f in factures_normales)
             dette_factures = sum(max(0.0, float(f.reste or 0)) for f in factures_normales)
@@ -37,10 +27,7 @@ class DashboardService:
             limite_echeance = aujourd_hui + timedelta(days=7)
             impayees = [f for f in factures_normales if float(f.reste or 0) > 0]
             retard = sum(1 for f in impayees if f.date_echeance < aujourd_hui)
-            echeance = sum(
-                1 for f in impayees
-                if aujourd_hui <= f.date_echeance <= limite_echeance
-            )
+            echeance = sum(1 for f in impayees if aujourd_hui <= f.date_echeance <= limite_echeance)
 
             dernieres = (
                 session.query(Facture)
@@ -49,7 +36,6 @@ class DashboardService:
                 .limit(10)
                 .all()
             )
-
             echeances = sorted(
                 [f for f in impayees if f.date_echeance <= limite_echeance],
                 key=lambda f: (f.date_echeance, f.id),
@@ -67,10 +53,12 @@ class DashboardService:
                         "fournisseur_id": fournisseur_id,
                         "fournisseur_nom": fournisseur_nom,
                         "nombre_factures": 0,
+                        "nombre_factures_impayees": 0,
                         "nombre_avoirs": 0,
                         "montant_total": 0.0,
                         "montant_paye": 0.0,
                         "avoirs": 0.0,
+                        "dette_factures": 0.0,
                         "dette": 0.0,
                         "solde": 0.0,
                         "factures": [],
@@ -82,7 +70,6 @@ class DashboardService:
                     avoir = abs(float(piece.montant or 0))
                     groupe["nombre_avoirs"] += 1
                     groupe["avoirs"] += avoir
-                    groupe["solde"] -= avoir
                     groupe["factures"].append({
                         "id": piece.id,
                         "numero": piece.numero,
@@ -101,12 +88,9 @@ class DashboardService:
                     groupe["nombre_factures"] += 1
                     groupe["montant_total"] += montant
                     groupe["montant_paye"] += paye
-                    groupe["dette"] += reste
-                    groupe["solde"] += reste
-
-                    # Seules les factures avec un reste positif sont
-                    # proposées dans la liste des impayées/règlements.
+                    groupe["dette_factures"] += reste
                     if reste > 0:
+                        groupe["nombre_factures_impayees"] += 1
                         groupe["factures"].append({
                             "id": piece.id,
                             "numero": piece.numero,
@@ -119,11 +103,13 @@ class DashboardService:
                             "type_piece": "Facture",
                         })
 
-            # IMPORTANT : la dette affichée est le solde net après avoirs.
-            # Elle peut être négative : dans ce cas le fournisseur nous doit
-            # un crédit et ce n'est plus une dette à payer.
+            # Dette fournisseur = total des restes des factures - total des avoirs.
+            # Exemple : 15 200 DA de reste - 2 000 DA d'avoir = 13 200 DA.
             for groupe in dettes_map.values():
-                groupe["solde"] = groupe["dette"] - groupe["avoirs"]
+                groupe["solde"] = groupe["dette_factures"] - groupe["avoirs"]
+                # Le champ historique "dette" est conservé pour compatibilité
+                # avec l'interface actuelle, mais représente désormais le solde net.
+                groupe["dette"] = groupe["solde"]
 
             dettes_fournisseurs = sorted(
                 [g for g in dettes_map.values() if abs(g["solde"]) > 0.0001],
@@ -131,10 +117,7 @@ class DashboardService:
             )
 
             nombre_factures_impayees = len(impayees)
-            nombre_fournisseurs_dettes = sum(
-                1 for g in dettes_fournisseurs if g["solde"] > 0
-            )
-
+            nombre_fournisseurs_dettes = sum(1 for g in dettes_fournisseurs if g["solde"] > 0)
             top_fournisseurs = sorted(
                 [(g["fournisseur_nom"], g["solde"]) for g in dettes_fournisseurs],
                 key=lambda x: x[1],
@@ -148,7 +131,6 @@ class DashboardService:
                 notifications.append(f"{echeance} facture(s) arrivent à échéance sous 7 jours")
             if nombre_fournisseurs_dettes:
                 notifications.append(f"{nombre_fournisseurs_dettes} fournisseur(s) ont une dette en cours")
-
             credits = sum(1 for g in dettes_fournisseurs if g["solde"] < 0)
             if credits:
                 notifications.append(f"{credits} fournisseur(s) ont un crédit/avoir disponible")
@@ -157,7 +139,6 @@ class DashboardService:
                 "total_factures": len(factures_normales),
                 "montant_total": float(montant_total),
                 "montant_paye": float(montant_paye),
-                # Carte "Dette fournisseurs" = dette nette après avoirs.
                 "reste": float(solde_global),
                 "dette_factures": float(dette_factures),
                 "total_avoirs": float(total_avoirs),
