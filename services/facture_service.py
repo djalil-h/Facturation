@@ -13,7 +13,6 @@ from database.models import (
 
 
 def _recalculer_statut(facture):
-    """Keep amount, remaining balance and invoice status consistent."""
     facture.montant_paye = max(0, facture.montant_paye or 0)
     facture.reste = max(0, facture.montant - facture.montant_paye)
 
@@ -72,7 +71,6 @@ def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant
         ))
         session.commit()
         session.refresh(facture)
-        facture.fournisseur
         return facture
     except Exception:
         session.rollback()
@@ -183,6 +181,64 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
         ))
         session.commit()
         return paiement
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
+    """Règle intégralement plusieurs factures dans une seule opération.
+
+    Un paiement distinct est créé pour chaque facture afin de conserver
+    un historique et un solde corrects par facture. L'opération est atomique:
+    si une facture est invalide, aucun paiement n'est enregistré.
+    """
+    ids = list(dict.fromkeys(facture_ids or []))
+    if not ids:
+        raise ValueError("Sélectionnez au moins une facture.")
+
+    session = get_session()
+    try:
+        factures = (
+            session.query(Facture)
+            .filter(Facture.id.in_(ids))
+            .order_by(Facture.id.asc())
+            .with_for_update()
+            .all()
+        )
+        if len(factures) != len(ids):
+            raise ValueError("Une ou plusieurs factures sélectionnées sont introuvables.")
+
+        paiements = []
+        total = 0.0
+        for facture in factures:
+            reste = float(facture.reste or 0)
+            if reste <= 0:
+                raise ValueError(f"La facture {facture.numero} est déjà réglée.")
+            paiement = Paiement(
+                facture_id=facture.id,
+                montant=reste,
+                date_paiement=date.today(),
+                mode_paiement=mode,
+                reference=reference,
+                utilisateur_id=_user_id(utilisateur),
+            )
+            facture.montant_paye += reste
+            _recalculer_statut(facture)
+            session.add(paiement)
+            session.add(Historique(
+                facture_id=facture.id,
+                action="Paiement groupé",
+                details=f"Facture {facture.numero} réglée intégralement : {reste:.2f} DA",
+                utilisateur=_username(utilisateur),
+            ))
+            paiements.append(paiement)
+            total += reste
+
+        session.commit()
+        return {"factures": len(factures), "paiements": paiements, "total": total}
     except Exception:
         session.rollback()
         raise
