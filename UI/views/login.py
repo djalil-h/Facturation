@@ -3,20 +3,21 @@ from tkinter import messagebox
 import ttkbootstrap as tb
 
 from services.user_service import login
+from UI.widgets.brand_logo import BrandLogo
 
 
 class LoginView(tb.Frame):
     def __init__(self, master, app):
-        super().__init__(master, padding=40)
+        super().__init__(master, padding=24, bootstyle="light")
         self.app = app
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        card = tb.Frame(self, padding=35, bootstyle="light")
+        card = tb.Frame(self, padding=28, bootstyle="light")
         card.grid(row=0, column=0)
 
-        tb.Label(card, text="Facturation", font=("Segoe UI", 28, "bold")).pack(pady=(0, 5))
-        tb.Label(card, text="Connexion", font=("Segoe UI", 12)).pack(pady=(0, 25))
+        BrandLogo(card, width=300, height=180, dark=False, compact=False).pack(pady=(0, 8))
+        tb.Label(card, text="Connexion", font=("Segoe UI", 12, "bold"), bootstyle="secondary").pack(pady=(0, 22))
 
         tb.Label(card, text="Nom d'utilisateur").pack(anchor="w", pady=(5, 4))
         self.username_var = tk.StringVar()
