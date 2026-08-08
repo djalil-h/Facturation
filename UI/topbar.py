@@ -1,182 +1,76 @@
 import ttkbootstrap as tb
-from ttkbootstrap.constants import *
 from datetime import datetime
 
 
 class TopBar(tb.Frame):
+    """Barre supérieure claire et compacte."""
 
     def __init__(self, master, app):
-
-        super().__init__(
-            master,
-            bootstyle="light",
-            padding=(20, 10)
-        )
-
+        super().__init__(master, bootstyle="light", padding=(24, 14))
         self.app = app
-
         self.columnconfigure(1, weight=1)
-
         self.build()
-
         self.update_clock()
 
-    # =====================================================
-    # CONSTRUCTION
-    # =====================================================
-
     def build(self):
-
-        # -----------------------
-        # TITRE
-        # -----------------------
+        title_box = tb.Frame(self, bootstyle="light")
+        title_box.grid(row=0, column=0, sticky="w")
 
         self.lbl_title = tb.Label(
-            self,
+            title_box,
             text="Tableau de bord",
-            font=("Segoe UI", 18, "bold")
+            font=("Segoe UI", 19, "bold"),
+            bootstyle="dark",
         )
+        self.lbl_title.pack(anchor="w")
 
-        self.lbl_title.grid(
-            row=0,
-            column=0,
-            sticky="w"
+        self.lbl_subtitle = tb.Label(
+            title_box,
+            text="Gestion des factures et règlements fournisseurs",
+            font=("Segoe UI", 9),
+            bootstyle="secondary",
         )
+        self.lbl_subtitle.pack(anchor="w", pady=(2, 0))
 
-        # -----------------------
-        # ESPACE
-        # -----------------------
-
-        spacer = tb.Frame(self)
-
-        spacer.grid(
-            row=0,
-            column=1,
-            sticky="ew"
-        )
-
-        # -----------------------
-        # NOTIFICATIONS
-        # -----------------------
+        tb.Frame(self, bootstyle="light").grid(row=0, column=1, sticky="ew")
 
         self.btn_notifications = tb.Button(
             self,
             text="🔔 0",
             bootstyle="info-outline",
-            width=8,
-            command=self.show_notifications
+            padding=(10, 7),
+            command=self.show_notifications,
         )
+        self.btn_notifications.grid(row=0, column=2, padx=(8, 12))
 
-        self.btn_notifications.grid(
-            row=0,
-            column=2,
-            padx=5
-        )
-
-        # -----------------------
-        # UTILISATEUR
-        # -----------------------
-
-        self.lbl_user = tb.Label(
-            self,
-            text="Invité",
-            font=("Segoe UI", 11, "bold")
-        )
-
-        self.lbl_user.grid(
-            row=0,
-            column=3,
-            padx=15
-        )
-
-        # -----------------------
-        # DATE / HEURE
-        # -----------------------
-
-        self.lbl_clock = tb.Label(
-            self,
-            text="",
-            font=("Segoe UI", 10)
-        )
-
-        self.lbl_clock.grid(
-            row=0,
-            column=4
-        )
-
-    # =====================================================
-    # HORLOGE
-    # =====================================================
+        user_box = tb.Frame(self, bootstyle="light")
+        user_box.grid(row=0, column=3, padx=(0, 14))
+        self.lbl_user = tb.Label(user_box, text="Invité", font=("Segoe UI", 10, "bold"), bootstyle="dark")
+        self.lbl_user.pack(anchor="e")
+        self.lbl_clock = tb.Label(user_box, text="", font=("Segoe UI", 8), bootstyle="secondary")
+        self.lbl_clock.pack(anchor="e", pady=(2, 0))
 
     def update_clock(self):
-
-        now = datetime.now()
-
-        self.lbl_clock.configure(
-
-            text=now.strftime("%d/%m/%Y   %H:%M:%S")
-
-        )
-
-        self.after(
-            1000,
-            self.update_clock
-        )
-
-    # =====================================================
-    # UTILISATEUR
-    # =====================================================
+        if not self.winfo_exists():
+            return
+        self.lbl_clock.configure(text=datetime.now().strftime("%d/%m/%Y  •  %H:%M:%S"))
+        self.after(1000, self.update_clock)
 
     def refresh_user(self, user):
-
-        if user is None:
-
-            self.lbl_user.configure(
-                text="Invité"
-            )
-
+        if not self.winfo_exists():
             return
-
-        self.lbl_user.configure(
-
-            text=f"👤 {user.username}"
-
-        )
-
-    # =====================================================
-    # TITRE PAGE
-    # =====================================================
+        self.lbl_user.configure(text=f"👤 {user.username}" if user else "Invité")
 
     def set_page_title(self, titre):
-
-        self.lbl_title.configure(
-
-            text=titre
-
-        )
-
-    # =====================================================
-    # NOTIFICATIONS
-    # =====================================================
+        if self.winfo_exists():
+            self.lbl_title.configure(text=titre)
 
     def set_notification_count(self, nombre):
-
-        self.btn_notifications.configure(
-
-            text=f"🔔 {nombre}"
-
-        )
-
-    # =====================================================
-    # EVENEMENTS
-    # =====================================================
+        if self.winfo_exists():
+            self.btn_notifications.configure(text=f"🔔 {nombre}")
 
     def show_notifications(self):
-
         tb.dialogs.Messagebox.show_info(
-
             "Le centre de notifications sera disponible dans une prochaine version.",
-
-            "Notifications"
-
+            "Notifications",
         )
