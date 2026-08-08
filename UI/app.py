@@ -4,6 +4,7 @@ import ttkbootstrap as tb
 from UI.sidebar import Sidebar
 from UI.topbar import TopBar
 from UI.views.login import LoginView
+from UI.theme import apply_theme, BG
 
 
 class FacturationApp(tb.Window):
@@ -11,11 +12,12 @@ class FacturationApp(tb.Window):
 
     def __init__(self):
         super().__init__(themename="flatly")
+        apply_theme(self)
         self.title("Facturation - Pharmacie Hamzaoui Hamid")
-        self.geometry("1280x720")
-        self.minsize(980, 620)
+        self.geometry("1280x760")
+        self.minsize(1050, 650)
         self.resizable(True, True)
-        self.configure(bg="#f4f6f8")
+        self.configure(bg=BG)
         self.current_user = None
         self.current_view = None
         self.main_container = None
@@ -24,6 +26,7 @@ class FacturationApp(tb.Window):
         self.sidebar = None
         self.bind("<F11>", lambda _e: self.toggle_fullscreen())
         self.bind("<Escape>", lambda _e: self.exit_fullscreen())
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.show_login()
 
     def toggle_fullscreen(self):
@@ -52,7 +55,7 @@ class FacturationApp(tb.Window):
         self.show_dashboard()
 
     def create_layout(self):
-        self.columnconfigure(0, weight=0, minsize=210)
+        self.columnconfigure(0, weight=0, minsize=232)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -70,11 +73,13 @@ class FacturationApp(tb.Window):
         self.topbar.refresh_user(self.current_user)
 
         self.content = tb.Frame(self.main_container, bootstyle="light")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 14))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=14, pady=(2, 12))
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
 
     def clear_content(self):
+        if self.content is None:
+            return
         for widget in self.content.winfo_children():
             widget.destroy()
 
