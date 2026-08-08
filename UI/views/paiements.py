@@ -17,6 +17,9 @@ class PaiementsView(BaseView):
         self._build()
         self.refresh()
 
+    def _current_user(self):
+        return self.winfo_toplevel().get_current_user()
+
     def _build(self):
         header = tb.Frame(self.body)
         header.pack(fill="x", pady=(0, 15))
@@ -109,8 +112,7 @@ class PaiementsView(BaseView):
                 numero = facture_var.get().split(" — ", 1)[0]
                 facture = next(f for f in self.factures if f.numero == numero)
                 montant = float(amount.get().replace(",", "."))
-                utilisateur = self.master.master.get_current_user()
-                ajouter_paiement(facture.id, montant, mode.get(), reference.get().strip(), utilisateur)
+                ajouter_paiement(facture.id, montant, mode.get(), reference.get().strip(), self._current_user())
             except Exception as exc:
                 messagebox.showerror("Paiement refusé", str(exc), parent=dialog)
                 return
