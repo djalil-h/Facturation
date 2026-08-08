@@ -143,15 +143,22 @@ class PaiementsView(BaseView):
         tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
         tb.Button(buttons, text="Enregistrer", bootstyle="success", command=save).pack(side="right")
 
-    def open_bulk_payment_dialog(self):
-        """Permet de solder plusieurs factures dans une seule opération."""
-        impayees = [f for f in self.factures if float(f.reste or 0) > 0]
+    def open_bulk_payment_dialog(self, fournisseur_id=None, fournisseur_nom=None):
+        """Règle plusieurs factures, éventuellement limitées à un fournisseur."""
+        impayees = [f for f in self.factures if float(f.reste or 0) > 0 and getattr(f, "type_piece", "Facture") != "Avoir"]
+        if fournisseur_id is not None:
+            impayees = [f for f in impayees if getattr(f, "fournisseur_id", None) == fournisseur_id]
+
         if not impayees:
-            messagebox.showinfo("Règlement groupé", "Aucune facture avec un reste à payer.")
+            messagebox.showinfo(
+                "Règlement groupé",
+                f"Aucune facture impayée{f' pour {fournisseur_nom}' if fournisseur_nom else ''}.",
+                parent=self,
+            )
             return
 
         dialog = tb.Toplevel(self)
-        dialog.title("Régler plusieurs factures")
+        dialog.title("Régler les factures" + (f" — {fournisseur_nom}" if fournisseur_nom else ""))
         dialog.geometry("720x650")
         dialog.minsize(650, 550)
         dialog.transient(self.winfo_toplevel())
@@ -159,24 +166,28 @@ class PaiementsView(BaseView):
 
         box = tb.Frame(dialog, padding=20)
         box.pack(fill="both", expand=True)
-        tb.Label(box, text="Régler plusieurs factures", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        titre = "Régler les factures"
+        if fournisseur_nom:
+            titre += f" — {fournisseur_nom}"
+        tb.Label(box, text=titre, font=("Segoe UI", 20, "bold")).pack(anchor="w")
         tb.Label(
             box,
-            text="Cochez les factures à régler intégralement. Un paiement sera créé pour chaque facture.",
+            text="Sélectionnez les factures à régler. Un paiement sera créé pour chaque facture sélectionnée.",
             bootstyle="secondary",
+            wraplength=650,
         ).pack(anchor="w", pady=(4, 15))
 
         list_frame = tb.Frame(box)
         list_frame.pack(fill="both", expand=True)
-
         canvas = tk.Canvas(list_frame, highlightthickness=0)
         scrollbar = tb.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
         inner = tb.Frame(canvas)
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=inner, anchor="nw")
+        window = canvas.create_window((0, 0), window=inner, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
 
         selections = {}
         for facture in impayees:
@@ -217,7 +228,6 @@ class PaiementsView(BaseView):
             except Exception as exc:
                 messagebox.showerror("Règlement refusé", str(exc), parent=dialog)
                 return
-
             dialog.destroy()
             self.refresh()
             messagebox.showinfo(
