@@ -60,11 +60,27 @@ class DashboardService:
             # UI never depends on a closed SQLAlchemy session.
             factures_impayees = (
                 session.query(Facture)
+                .join(Fournisseur, Facture.fournisseur_id == Fournisseur.id)
                 .options(selectinload(Facture.fournisseur))
                 .filter(Facture.statut != statut_payee, Facture.reste > 0)
                 .order_by(Fournisseur.nom.asc(), Facture.date_echeance.asc(), Facture.id.asc())
                 .all()
             )
+
+            # Factures without a fournisseur must also remain visible on the
+            # dashboard instead of disappearing from the debt calculation.
+            factures_sans_fournisseur = (
+                session.query(Facture)
+                .options(selectinload(Facture.fournisseur))
+                .filter(
+                    Facture.fournisseur_id.is_(None),
+                    Facture.statut != statut_payee,
+                    Facture.reste > 0,
+                )
+                .order_by(Facture.date_echeance.asc(), Facture.id.asc())
+                .all()
+            )
+            factures_impayees.extend(factures_sans_fournisseur)
 
             dettes_map = {}
             for facture in factures_impayees:
