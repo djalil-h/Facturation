@@ -20,7 +20,7 @@ class DashboardService:
             montant_total = sum(float(f.montant or 0) for f in factures_normales)
             montant_paye = sum(float(f.montant_paye or 0) for f in factures_normales)
             dette_factures = sum(max(0.0, float(f.reste or 0)) for f in factures_normales)
-            total_avoirs = sum(abs(float(f.montant or 0)) for f in avoirs)
+            total_avoirs = sum(abs(float(f.reste or 0)) for f in avoirs)
             solde_global = dette_factures - total_avoirs
 
             aujourd_hui = date.today()
@@ -58,6 +58,7 @@ class DashboardService:
                         "montant_total": 0.0,
                         "montant_paye": 0.0,
                         "avoirs": 0.0,
+                        "credit_disponible": 0.0,
                         "dette_factures": 0.0,
                         "dette": 0.0,
                         "solde": 0.0,
@@ -67,15 +68,16 @@ class DashboardService:
                 groupe = dettes_map[key]
 
                 if getattr(piece, "type_piece", "Facture") == "Avoir":
-                    avoir = abs(float(piece.montant or 0))
+                    avoir = abs(float(piece.reste or 0))
                     groupe["nombre_avoirs"] += 1
                     groupe["avoirs"] += avoir
+                    groupe["credit_disponible"] += avoir
                     groupe["factures"].append({
                         "id": piece.id,
                         "numero": piece.numero,
                         "date_facture": piece.date_facture,
                         "date_echeance": piece.date_echeance,
-                        "montant": -avoir,
+                        "montant": -abs(float(piece.montant or 0)),
                         "montant_paye": 0.0,
                         "reste": -avoir,
                         "statut": "Avoir",
@@ -103,12 +105,8 @@ class DashboardService:
                             "type_piece": "Facture",
                         })
 
-            # Dette fournisseur = total des restes des factures - total des avoirs.
-            # Exemple : 15 200 DA de reste - 2 000 DA d'avoir = 13 200 DA.
             for groupe in dettes_map.values():
-                groupe["solde"] = groupe["dette_factures"] - groupe["avoirs"]
-                # Le champ historique "dette" est conservé pour compatibilité
-                # avec l'interface actuelle, mais représente désormais le solde net.
+                groupe["solde"] = groupe["dette_factures"] - groupe["credit_disponible"]
                 groupe["dette"] = groupe["solde"]
 
             dettes_fournisseurs = sorted(
@@ -120,8 +118,7 @@ class DashboardService:
             nombre_fournisseurs_dettes = sum(1 for g in dettes_fournisseurs if g["solde"] > 0)
             top_fournisseurs = sorted(
                 [(g["fournisseur_nom"], g["solde"]) for g in dettes_fournisseurs],
-                key=lambda x: x[1],
-                reverse=True,
+                key=lambda x: x[1], reverse=True,
             )[:5]
 
             notifications = []
