@@ -21,8 +21,6 @@ class Dashboard(BaseView):
         self.refresh_dashboard()
 
     def build(self):
-        # BaseView utilise déjà pack() pour le titre et self.body.
-        # On utilise donc grid() uniquement DANS self.body.
         root = self.body
         root.columnconfigure(0, weight=1)
         root.rowconfigure(2, weight=1)
@@ -154,10 +152,34 @@ class Dashboard(BaseView):
         tree.pack(fill=X)
         action = tb.Frame(box)
         action.pack(fill=X, pady=(7, 0))
-        tb.Button(action, text="Voir les factures / régler  →", bootstyle="primary", command=lambda s=supplier: self.open_supplier(s)).pack(side=RIGHT)
-        tree.bind("<Double-1>", lambda _e, s=supplier: self.open_supplier(s))
+        tb.Button(
+            action,
+            text="💰 Régler les factures",
+            bootstyle="success",
+            command=lambda s=supplier: self.open_supplier_payment(s),
+        ).pack(side=RIGHT)
+        tb.Button(
+            action,
+            text="Voir les factures",
+            bootstyle="secondary-outline",
+            command=lambda s=supplier: self.open_supplier_factures(s),
+        ).pack(side=RIGHT, padx=(0, 7))
+        tree.bind("<Double-1>", lambda _e, s=supplier: self.open_supplier_payment(s))
 
-    def open_supplier(self, supplier):
+    def open_supplier_payment(self, supplier):
+        """Ouvre directement le règlement groupé pour le fournisseur cliqué."""
+        root = self.winfo_toplevel()
+        if not hasattr(root, "show_paiements"):
+            return
+        root.show_paiements()
+        view = getattr(root, "current_view", None)
+        if view is not None and hasattr(view, "open_bulk_payment_dialog"):
+            view.open_bulk_payment_dialog(
+                fournisseur_id=supplier.get("fournisseur_id"),
+                fournisseur_nom=supplier.get("fournisseur_nom"),
+            )
+
+    def open_supplier_factures(self, supplier):
         root = self.winfo_toplevel()
         if hasattr(root, "show_factures"):
             root.show_factures()
