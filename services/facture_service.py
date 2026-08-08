@@ -6,9 +6,19 @@ from database.db import get_session
 from database.models import Facture, Fournisseur, Paiement, Historique, StatutFacture
 
 
+def _is_avoir(facture_or_type):
+    value = facture_or_type if isinstance(facture_or_type, str) else getattr(facture_or_type, "type_piece", "Facture")
+    return str(value).strip().lower() == "avoir"
+
+
 def _recalculer_statut(facture):
-    facture.montant_paye = max(0, facture.montant_paye or 0)
-    facture.reste = max(0, facture.montant - facture.montant_paye)
+    if _is_avoir(facture):
+        facture.montant_paye = 0
+        facture.reste = facture.montant
+        facture.statut = StatutFacture.PAYEE
+        return
+    facture.montant_paye = max(0, float(facture.montant_paye or 0))
+    facture.reste = max(0, float(facture.montant or 0) - facture.montant_paye)
     if facture.reste == 0:
         facture.statut = StatutFacture.PAYEE
     elif facture.montant_paye > 0:
@@ -18,8 +28,8 @@ def _recalculer_statut(facture):
 
 
 def _validate_invoice_dates_and_amount(date_facture, date_echeance, montant):
-    if montant is None or montant < 0:
-        raise ValueError("Le montant doit être supérieur ou égal à zéro.")
+    if montant is None or montant <= 0:
+        raise ValueError("Le montant doit être strictement supérieur à zéro.")
     if date_facture is None or date_echeance is None:
         raise ValueError("Les dates de facture et d'échéance sont obligatoires.")
     if date_echeance < date_facture:
@@ -41,21 +51,26 @@ def _username(utilisateur):
     return getattr(utilisateur, "username", "Invité")
 
 
-def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur):
+def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur, type_piece="Facture"):
     _validate_invoice_dates_and_amount(date_facture, date_echeance, montant)
+    type_piece = "Avoir" if _is_avoir(type_piece) else "Facture"
+    signed_amount = -abs(float(montant)) if type_piece == "Avoir" else abs(float(montant))
     session = get_session()
     try:
-        existe = session.query(Facture).filter_by(numero=numero).first()
-        if existe:
+        if session.query(Facture).filter_by(numero=numero).first():
             raise ValueError("Numéro de facture déjà utilisé.")
-        facture = Facture(numero=numero, fournisseur_id=fournisseur_id, date_facture=date_facture,
-                          date_echeance=date_echeance, montant=montant, montant_paye=0,
-                          reste=montant, statut=StatutFacture.IMPAYEE, commentaire=commentaire,
-                          created_by=_user_id(utilisateur))
+        facture = Facture(
+            numero=numero, fournisseur_id=fournisseur_id, date_facture=date_facture,
+            date_echeance=date_echeance, montant=signed_amount,
+            montant_paye=0, reste=signed_amount if type_piece == "Avoir" else abs(float(montant)),
+            statut=StatutFacture.PAYEE if type_piece == "Avoir" else StatutFacture.IMPAYEE,
+            type_piece=type_piece, commentaire=commentaire, created_by=_user_id(utilisateur)
+        )
         session.add(facture)
         session.flush()
+        libelle = "Avoir" if type_piece == "Avoir" else "Facture"
         session.add(Historique(facture_id=facture.id, action="Création",
-                               details=f"Facture {numero} créée.", utilisateur=_username(utilisateur)))
+                               details=f"{libelle} {numero} créée.", utilisateur=_username(utilisateur)))
         session.commit()
         session.refresh(facture)
         return facture
@@ -64,6 +79,10 @@ def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant
         raise
     finally:
         session.close()
+
+
+def ajouter_avoir(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur):
+    return ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur, "Avoir")
 
 
 def liste_factures():
@@ -80,13 +99,12 @@ def supprimer_facture(facture_id, utilisateur=None):
         facture = session.get(Facture, facture_id)
         if facture is None:
             return False
-        if (facture.montant_paye or 0) > 0:
+        if (facture.montant_paye or 0) > 0 or facture.paiements:
             raise ValueError(
-                f"La facture {facture.numero} possède déjà des paiements ({facture.montant_paye:.2f} DA). "
-                "Elle ne peut pas être supprimée."
+                f"La pièce {facture.numero} possède déjà des paiements. Elle ne peut pas être supprimée."
             )
         session.add(Historique(facture_id=facture.id, action="Suppression",
-                               details=f"Facture {facture.numero} supprimée.", utilisateur=_username(utilisateur)))
+                               details=f"Pièce {facture.numero} supprimée.", utilisateur=_username(utilisateur)))
         session.delete(facture)
         session.commit()
         return True
@@ -97,24 +115,30 @@ def supprimer_facture(facture_id, utilisateur=None):
         session.close()
 
 
-def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_echeance, montant, commentaire, utilisateur):
+def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_echeance, montant, commentaire, utilisateur, type_piece="Facture"):
     _validate_invoice_dates_and_amount(date_facture, date_echeance, montant)
+    type_piece = "Avoir" if _is_avoir(type_piece) else "Facture"
     session = get_session()
     try:
         facture = session.get(Facture, facture_id)
         if facture is None:
             return False
-        if montant < (facture.montant_paye or 0):
+        if facture.paiements and type_piece == "Avoir":
+            raise ValueError("Une facture ayant déjà des paiements ne peut pas être transformée en avoir.")
+        if facture.paiements and type_piece == "Facture" and montant < (facture.montant_paye or 0):
             raise ValueError(f"Le nouveau montant ({montant:.2f} DA) ne peut pas être inférieur au montant déjà payé ({facture.montant_paye:.2f} DA).")
         duplicate = session.query(Facture).filter(Facture.numero == numero, Facture.id != facture_id).first()
         if duplicate:
             raise ValueError("Numéro de facture déjà utilisé.")
         facture.numero, facture.fournisseur_id = numero, fournisseur_id
         facture.date_facture, facture.date_echeance = date_facture, date_echeance
-        facture.commentaire, facture.montant = commentaire, montant
+        facture.commentaire, facture.type_piece = commentaire, type_piece
+        facture.montant = -abs(float(montant)) if type_piece == "Avoir" else abs(float(montant))
+        if type_piece == "Avoir":
+            facture.montant_paye = 0
         _recalculer_statut(facture)
         session.add(Historique(facture_id=facture.id, action="Modification",
-                               details=f"Facture {numero} modifiée", utilisateur=_username(utilisateur)))
+                               details=f"{type_piece} {numero} modifiée", utilisateur=_username(utilisateur)))
         session.commit()
         return True
     except Exception:
@@ -131,6 +155,8 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
         facture = session.get(Facture, facture_id)
         if facture is None:
             raise ValueError("Facture introuvable.")
+        if _is_avoir(facture):
+            raise ValueError("Un avoir diminue la dette fournisseur et ne peut pas recevoir de paiement.")
         reste = float(facture.reste or 0)
         montant = float(montant)
         if montant <= 0:
@@ -168,6 +194,8 @@ def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
             raise ValueError("Une ou plusieurs factures sélectionnées sont introuvables.")
         paiements, total = [], 0.0
         for facture in factures:
+            if _is_avoir(facture):
+                raise ValueError(f"L'avoir {facture.numero} ne peut pas être inclus dans un règlement.")
             reste = float(facture.reste or 0)
             if reste <= 0:
                 raise ValueError(f"La facture {facture.numero} est déjà réglée.")
