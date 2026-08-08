@@ -11,8 +11,9 @@ class FacturationApp(tb.Window):
     def __init__(self):
         super().__init__(themename="flatly")
         self.title("Facturation - Pharmacie Hamzaoui Hamid")
-        self.geometry("1550x900")
-        self.minsize(1000, 650)
+        self.geometry("1280x720")
+        self.minsize(980, 620)
+        self.resizable(True, True)
         self.configure(bg="#f4f6f8")
         self.current_user = None
         self.current_view = None
@@ -21,6 +22,12 @@ class FacturationApp(tb.Window):
         self.topbar = None
         self.sidebar = None
         self.show_login()
+
+    def toggle_fullscreen(self):
+        self.attributes("-fullscreen", not bool(self.attributes("-fullscreen")))
+
+    def exit_fullscreen(self):
+        self.attributes("-fullscreen", False)
 
     def clear_root(self):
         for widget in self.winfo_children():
@@ -42,7 +49,7 @@ class FacturationApp(tb.Window):
         self.show_dashboard()
 
     def create_layout(self):
-        self.columnconfigure(0, weight=0, minsize=245)
+        self.columnconfigure(0, weight=0, minsize=220)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -60,7 +67,7 @@ class FacturationApp(tb.Window):
         self.topbar.refresh_user(self.current_user)
 
         self.content = tb.Frame(self.main_container, bootstyle="light")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=24, pady=(8, 24))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=18, pady=(4, 18))
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
 
