@@ -5,160 +5,124 @@ from database.db import get_session
 from database.models import User
 
 
-# =====================================================
-# HASH
-# =====================================================
-
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(
-        password.encode(),
-        bcrypt.gensalt()
-    ).decode()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(
-        password.encode(),
-        hashed.encode()
-    )
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
-
-# =====================================================
-# ADMIN
-# =====================================================
 
 def create_admin():
-
     session = get_session()
-
-    admin = session.query(User).filter_by(username="admin").first()
-
-    if admin:
+    try:
+        admin = session.query(User).filter_by(username="admin").first()
+        if admin:
+            return
+        admin = User(username="admin", password=hash_password("admin123"), role="ADMIN")
+        session.add(admin)
+        session.commit()
+    finally:
         session.close()
-        return
 
-    admin = User(
-        username="admin",
-        password=hash_password("admin123"),
-        role="ADMIN"
-    )
-
-    session.add(admin)
-    session.commit()
-    session.close()
-
-
-# =====================================================
-# LOGIN
-# =====================================================
 
 def login(username, password):
-
     session = get_session()
-
-    user = session.query(User).filter_by(
-        username=username,
-        is_active=True
-    ).first()
-
-    if not user:
+    try:
+        user = session.query(User).filter_by(username=username, is_active=True).first()
+        if not user or not verify_password(password, user.password):
+            return None
+        user.last_login = datetime.now()
+        session.commit()
+        session.refresh(user)
+        session.expunge(user)
+        return user
+    finally:
         session.close()
-        return None
 
-    if not verify_password(password, user.password):
-        session.close()
-        return None
-
-    user.last_login = datetime.now()
-
-    session.commit()
-
-    session.refresh(user)
-
-    session.expunge(user)
-
-    session.close()
-
-    return user
-
-
-# =====================================================
-# CREATE USER
-# =====================================================
 
 def create_user(username, password, role):
+    username = username.strip()
+    if not username:
+        raise ValueError("Le nom d'utilisateur est obligatoire.")
+    if not password:
+        raise ValueError("Le mot de passe est obligatoire.")
 
     session = get_session()
-
-    existe = session.query(User).filter_by(
-        username=username
-    ).first()
-
-    if existe:
+    try:
+        existe = session.query(User).filter_by(username=username).first()
+        if existe:
+            raise ValueError("Utilisateur déjà existant.")
+        user = User(username=username, password=hash_password(password), role=role, is_active=True)
+        session.add(user)
+        session.commit()
+    finally:
         session.close()
-        raise Exception("Utilisateur déjà existant.")
 
-    user = User(
-        username=username,
-        password=hash_password(password),
-        role=role
-    )
-
-    session.add(user)
-
-    session.commit()
-
-    session.close()
-
-
-# =====================================================
-# LIST USERS
-# =====================================================
 
 def get_users():
-
     session = get_session()
+    try:
+        users = session.query(User).order_by(User.username.asc()).all()
+        for user in users:
+            session.expunge(user)
+        return users
+    finally:
+        session.close()
 
-    users = session.query(User).all()
 
-    session.close()
+def update_user(user_id, username=None, role=None, password=None):
+    session = get_session()
+    try:
+        user = session.get(User, user_id)
+        if not user:
+            raise ValueError("Utilisateur introuvable.")
+        if username:
+            duplicate = session.query(User).filter(User.username == username, User.id != user_id).first()
+            if duplicate:
+                raise ValueError("Ce nom d'utilisateur est déjà utilisé.")
+            user.username = username.strip()
+        if role:
+            user.role = role
+        if password:
+            user.password = hash_password(password)
+        session.commit()
+    finally:
+        session.close()
 
-    return users
-
-
-# =====================================================
-# DELETE USER
-# =====================================================
 
 def delete_user(user_id):
-
     session = get_session()
+    try:
+        user = session.get(User, user_id)
+        if user:
+            if user.username == "admin":
+                raise ValueError("Le compte administrateur principal ne peut pas être supprimé.")
+            session.delete(user)
+            session.commit()
+    finally:
+        session.close()
 
-    user = session.get(User, user_id)
-
-    if user:
-
-        session.delete(user)
-
-        session.commit()
-
-    session.close()
-
-
-# =====================================================
-# DISABLE USER
-# =====================================================
 
 def disable_user(user_id):
-
     session = get_session()
+    try:
+        user = session.get(User, user_id)
+        if user:
+            if user.username == "admin":
+                raise ValueError("Le compte administrateur principal ne peut pas être désactivé.")
+            user.is_active = False
+            session.commit()
+    finally:
+        session.close()
 
-    user = session.get(User, user_id)
 
-    if user:
-
-        user.is_active = False
-
-        session.commit()
-
-    session.close()
+def enable_user(user_id):
+    session = get_session()
+    try:
+        user = session.get(User, user_id)
+        if user:
+            user.is_active = True
+            session.commit()
+    finally:
+        session.close()
