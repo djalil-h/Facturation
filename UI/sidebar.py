@@ -42,10 +42,22 @@ class Sidebar(tb.Frame):
         self.lbl_user.pack(anchor="w", padx=16, pady=(10, 2))
         self.lbl_version = tb.Label(self, text="Version 2.0", font=("Segoe UI", 8), bootstyle="secondary-inverse")
         self.lbl_version.pack(anchor="w", padx=16, pady=(0, 8))
-        tb.Button(self, text="⇥   Déconnexion", bootstyle="danger-outline", command=self.logout, padding=(9, 6)).pack(fill="x", padx=12, pady=(0, 12))
+        self.logout_button = tb.Button(
+            self, text="⇥   Déconnexion", bootstyle="danger-outline",
+            command=self.logout, padding=(9, 6), width=20
+        )
+        self.logout_button.pack(fill="x", padx=12, pady=(0, 12))
 
     def add_button(self, key, text, command):
-        btn = tb.Button(self, text=text, command=command, bootstyle="dark", padding=(10, 7), width=22)
+        btn = tb.Button(
+            self,
+            text=text,
+            command=command,
+            bootstyle="dark",
+            padding=(10, 7),
+            width=22,
+            compound="center"
+        )
         btn.pack(fill="x", padx=9, pady=1)
         self.buttons[key] = btn
 
