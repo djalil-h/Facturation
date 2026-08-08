@@ -1,12 +1,12 @@
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from tkinter import ttk
 
 from UI.base_view import BaseView
 from UI.widgets.stat_card import StatCard
 from UI.widgets.search_bar import SearchBar
 from UI.widgets.modern_table import ModernTable
 from services.dashboard_service import DashboardService
+from database.models import StatutFacture
 
 
 class Dashboard(BaseView):
@@ -86,33 +86,32 @@ class Dashboard(BaseView):
             tb.Label(self.notification_frame, text="✓ Aucune notification", bootstyle="success").pack(anchor="w", pady=5)
             return
         for notification in notifications:
-            tb.Label(self.notification_frame, text=f"• {notification}", wraplength=300, justify="left").pack(anchor="w", pady=5)
+            style = "danger" if "retard" in notification.lower() else "warning"
+            tb.Label(self.notification_frame, text=f"• {notification}", bootstyle=style,
+                     wraplength=300, justify="left").pack(anchor="w", pady=5)
 
     def refresh_due(self):
         for widget in self.due_frame.winfo_children():
             widget.destroy()
-        factures = self.data.get("dernieres", [])
+
+        factures = self.data.get("echeances", [])
         if not factures:
-            tb.Label(self.due_frame, text="Aucune facture", bootstyle="secondary").pack(anchor="w", pady=5)
+            tb.Label(self.due_frame, text="✓ Aucune échéance à surveiller", bootstyle="success").pack(anchor="w", pady=5)
             return
 
-        compteur = 0
+        aujourd_hui = __import__("datetime").date.today()
         for facture in factures:
-            statut = getattr(facture, "statut", "")
-            if str(statut).lower() == "payée":
-                continue
-            date_echeance = getattr(facture, "date_echeance", "")
+            date_echeance = getattr(facture, "date_echeance", None)
+            est_retard = date_echeance is not None and date_echeance < aujourd_hui
+            statut = "EN RETARD" if est_retard else "À VENIR"
+            style = "danger" if est_retard else "warning"
             numero = getattr(facture, "numero", getattr(facture, "numero_facture", facture.id))
             montant = getattr(facture, "montant", 0)
             texte = f"{numero}\nÉchéance : {date_echeance}\nMontant : {montant:,.2f} DA"
             item = tb.Frame(self.due_frame, padding=8)
             item.pack(fill=X, pady=4)
+            tb.Label(item, text=statut, bootstyle=style, font=("Segoe UI", 8, "bold")).pack(anchor="w")
             tb.Label(item, text=texte, justify="left", font=("Segoe UI", 9)).pack(anchor="w")
-            compteur += 1
-            if compteur >= 5:
-                break
-        if compteur == 0:
-            tb.Label(self.due_frame, text="✓ Aucune échéance en attente", bootstyle="success").pack(anchor="w", pady=5)
 
     def refresh_dashboard(self):
         try:
@@ -148,6 +147,8 @@ class Dashboard(BaseView):
             numero = getattr(facture, "numero", getattr(facture, "numero_facture", facture.id))
             fournisseur = getattr(facture, "fournisseur", None)
             fournisseur_nom = getattr(fournisseur, "nom", str(fournisseur)) if fournisseur else getattr(facture, "fournisseur_id", "")
+            statut = getattr(facture, "statut", "")
+            statut = getattr(statut, "value", statut)
             rows.append((
                 facture.id,
                 numero,
@@ -155,7 +156,7 @@ class Dashboard(BaseView):
                 getattr(facture, "date_facture", ""),
                 getattr(facture, "date_echeance", ""),
                 self.format_amount(getattr(facture, "montant", 0)),
-                getattr(facture, "statut", "")
+                statut,
             ))
         self.invoice_table.load_data(rows)
         self.invoice_table.autosize()
@@ -171,7 +172,8 @@ class Dashboard(BaseView):
         resultats = []
         for facture in self.data.get("dernieres", []):
             numero = str(getattr(facture, "numero", getattr(facture, "numero_facture", "")))
-            statut = str(getattr(facture, "statut", ""))
+            statut_obj = getattr(facture, "statut", "")
+            statut = str(getattr(statut_obj, "value", statut_obj))
             fournisseur = getattr(facture, "fournisseur", None)
             fournisseur_nom = str(getattr(fournisseur, "nom", "")) if fournisseur else ""
             if texte in numero.lower() or texte in statut.lower() or texte in fournisseur_nom.lower():
@@ -182,7 +184,7 @@ class Dashboard(BaseView):
                     getattr(facture, "date_facture", ""),
                     getattr(facture, "date_echeance", ""),
                     self.format_amount(getattr(facture, "montant", 0)),
-                    statut
+                    statut,
                 ))
 
         self.invoice_table.load_data(resultats)
