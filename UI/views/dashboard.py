@@ -21,7 +21,8 @@ class Dashboard(BaseView):
         self.refresh_dashboard()
 
     def build(self):
-        self.pack(fill=BOTH, expand=True)
+        # Le parent (UI.app.show_view) gère déjà le placement du Dashboard
+        # avec grid(). Ne jamais pack() ce widget ici.
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
 
@@ -99,6 +100,8 @@ class Dashboard(BaseView):
             self.refresh_alerts()
             self.refresh_due()
         except Exception as exc:
+            # Le Dashboard doit rester visible même si une donnée secondaire
+            # échoue à être chargée.
             print("Erreur Dashboard :", exc)
 
     def refresh_cards(self):
@@ -154,7 +157,6 @@ class Dashboard(BaseView):
         tree.bind("<Double-1>", lambda _e, s=supplier: self.open_supplier(s))
 
     def open_supplier(self, supplier):
-        """Conserve le workflow de règlement existant dans l'écran Factures."""
         root = self.winfo_toplevel()
         if hasattr(root, "show_factures"):
             root.show_factures()
@@ -191,11 +193,6 @@ class Dashboard(BaseView):
             tb.Label(row, text=self.format_amount(remaining), bootstyle="danger").pack(side=RIGHT)
 
     def search_supplier(self, text=""):
-        if hasattr(self.search, "get_value"):
-            try:
-                text = self.search.get_value()
-            except Exception:
-                pass
         self.refresh_suppliers(text)
 
     @staticmethod
