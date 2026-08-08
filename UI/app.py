@@ -29,7 +29,6 @@ class FacturationApp(tb.Window):
     def show_login(self):
         self.clear_root()
         self.current_view = None
-        # Les anciens widgets sont détruits. Il faut aussi invalider leurs références.
         self.main_container = None
         self.content = None
         self.topbar = None
@@ -49,6 +48,9 @@ class FacturationApp(tb.Window):
 
         self.sidebar = Sidebar(self)
         self.sidebar.grid(row=0, column=0, sticky="ns")
+        # set_current_user() est appelé avant la création de la Sidebar pendant
+        # la connexion ; il faut donc synchroniser l'utilisateur ici aussi.
+        self.sidebar.set_user(self.current_user.username if self.current_user else None)
 
         self.main_container = tb.Frame(self, bootstyle="light")
         self.main_container.grid(row=0, column=1, sticky="nsew")
@@ -109,8 +111,6 @@ class FacturationApp(tb.Window):
         self.show_view(ParametresView, "Paramètres", "parametres")
 
     def set_current_user(self, user):
-        # Cette méthode peut être appelée depuis l'écran de connexion,
-        # avant que la TopBar/Sidebar ne soient recréées.
         self.current_user = user
         if self.topbar is not None and self.topbar.winfo_exists():
             self.topbar.refresh_user(user)
