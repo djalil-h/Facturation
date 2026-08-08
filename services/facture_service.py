@@ -23,6 +23,14 @@ def _recalculer_statut(facture):
         facture.statut = StatutFacture.IMPAYEE
 
 
+def _user_id(utilisateur):
+    return getattr(utilisateur, "id", None)
+
+
+def _username(utilisateur):
+    return getattr(utilisateur, "username", "Invité")
+
+
 def ajouter_facture(
     numero,
     fournisseur_id,
@@ -48,7 +56,7 @@ def ajouter_facture(
             reste=montant,
             statut=StatutFacture.IMPAYEE,
             commentaire=commentaire,
-            created_by=utilisateur.id,
+            created_by=_user_id(utilisateur),
         )
         session.add(facture)
         session.flush()
@@ -58,7 +66,7 @@ def ajouter_facture(
                 facture_id=facture.id,
                 action="Création",
                 details=f"Facture {numero} créée.",
-                utilisateur=utilisateur.username,
+                utilisateur=_username(utilisateur),
             )
         )
         session.commit()
@@ -132,7 +140,7 @@ def modifier_facture(
                 facture_id=facture.id,
                 action="Modification",
                 details=f"Facture {numero} modifiée",
-                utilisateur=utilisateur.username,
+                utilisateur=_username(utilisateur),
             )
         )
         session.commit()
@@ -163,7 +171,7 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
             date_paiement=date.today(),
             mode_paiement=mode,
             reference=reference,
-            utilisateur_id=utilisateur.id,
+            utilisateur_id=_user_id(utilisateur),
         )
 
         facture.montant_paye += montant
@@ -175,7 +183,7 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
                 facture_id=facture.id,
                 action="Paiement",
                 details=f"Paiement de {montant:.2f} DA",
-                utilisateur=utilisateur.username,
+                utilisateur=_username(utilisateur),
             )
         )
         session.commit()
