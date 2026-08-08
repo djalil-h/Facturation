@@ -1,5 +1,7 @@
 import ttkbootstrap as tb
 
+from UI.widgets.brand_logo import BrandLogo
+
 
 class Sidebar(tb.Frame):
     """Navigation principale moderne, compacte et lisible."""
@@ -12,14 +14,7 @@ class Sidebar(tb.Frame):
         self.build()
 
     def build(self):
-        header = tb.Frame(self, bootstyle="dark")
-        header.pack(fill="x", padx=16, pady=(16, 10))
-        tb.Label(header, text="⚕", font=("Segoe UI Symbol", 24, "bold"), bootstyle="inverse-dark").pack(side="left")
-        brand = tb.Frame(header, bootstyle="dark")
-        brand.pack(side="left", padx=(9, 0))
-        tb.Label(brand, text="FACTURATION", font=("Segoe UI", 10, "bold"), bootstyle="inverse-dark").pack(anchor="w")
-        tb.Label(brand, text="Pharmacie", font=("Segoe UI", 8), bootstyle="secondary-inverse").pack(anchor="w")
-
+        BrandLogo(self, width=205, height=125, dark=True, compact=True).pack(fill="x", padx=10, pady=(8, 3))
         tb.Separator(self, bootstyle="secondary").pack(fill="x", padx=14, pady=(0, 10))
         tb.Label(self, text="MENU", font=("Segoe UI", 8, "bold"), bootstyle="secondary-inverse").pack(anchor="w", padx=16, pady=(0, 5))
 
