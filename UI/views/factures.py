@@ -25,13 +25,13 @@ class FacturesView(BaseView):
     def _build(self):
         header = tb.Frame(self.body)
         header.pack(fill="x", pady=(0, 15))
-        tb.Label(header, text="Factures", font=("Segoe UI", 22, "bold")).pack(side="left")
+        tb.Label(header, text="Factures et avoirs", font=("Segoe UI", 22, "bold")).pack(side="left")
         actions = tb.Frame(header)
         actions.pack(side="right")
         tb.Button(actions, text="⬇ Exporter Excel", bootstyle="success-outline", command=self.export_excel).pack(side="left", padx=4)
         tb.Button(actions, text="📄 Modèle Excel", bootstyle="secondary-outline", command=self.export_template).pack(side="left", padx=4)
         tb.Button(actions, text="⬆ Importer Excel", bootstyle="info-outline", command=self.import_excel).pack(side="left", padx=4)
-        tb.Button(actions, text="＋ Nouvelle facture", bootstyle="success", command=self.open_add_dialog).pack(side="left", padx=4)
+        tb.Button(actions, text="＋ Nouvelle pièce", bootstyle="success", command=self.open_add_dialog).pack(side="left", padx=4)
 
         toolbar = tb.Frame(self.body)
         toolbar.pack(fill="x", pady=(0, 12))
@@ -47,13 +47,13 @@ class FacturesView(BaseView):
 
         frame = tb.Frame(self.body)
         frame.pack(fill="both", expand=True)
-        self.table = ModernTable(frame, ("ID", "N° Facture", "Fournisseur", "Date", "Échéance", "Montant", "Payé", "Reste", "Statut"))
+        self.table = ModernTable(frame, ("ID", "Type", "N°", "Fournisseur", "Date", "Échéance", "Montant", "Payé", "Reste", "Statut"))
         self.table.pack(fill="both", expand=True)
         self.table.bind_double_click(self._edit_selected)
 
         footer = tb.Frame(self.body)
         footer.pack(fill="x", pady=(12, 0))
-        self.count_label = tb.Label(footer, text="0 facture")
+        self.count_label = tb.Label(footer, text="0 pièce")
         self.count_label.pack(side="left")
         for text, style, command in [("✎ Modifier", "primary-outline", self._edit_selected), ("💰 Paiement", "success-outline", self.open_payment_dialog), ("✕ Supprimer", "danger-outline", self._delete_selected)]:
             tb.Button(footer, text=text, bootstyle=style, command=command).pack(side="right", padx=4)
@@ -68,12 +68,18 @@ class FacturesView(BaseView):
             if search:
                 self.factures = [f for f in self.factures if search in str(f.numero).lower() or search in str(getattr(f.fournisseur, "nom", "")).lower()]
         except Exception as exc:
-            messagebox.showerror("Erreur", f"Impossible de charger les factures.\n\n{exc}")
+            messagebox.showerror("Erreur", f"Impossible de charger les pièces.\n\n{exc}")
             return
-        rows = [(f.id, f.numero, getattr(f.fournisseur, "nom", "") if f.fournisseur else "", f.date_facture, f.date_echeance, f"{f.montant:,.2f} DA", f"{f.montant_paye:,.2f} DA", f"{f.reste:,.2f} DA", getattr(f.statut, "value", f.statut)) for f in self.factures]
+        rows = []
+        for f in self.factures:
+            type_piece = getattr(f, "type_piece", "Facture")
+            montant = float(f.montant or 0)
+            rows.append((f.id, type_piece, f.numero, getattr(f.fournisseur, "nom", "") if f.fournisseur else "", f.date_facture, f.date_echeance,
+                         f"{montant:,.2f} DA", f"{float(f.montant_paye or 0):,.2f} DA", f"{float(f.reste or 0):,.2f} DA",
+                         getattr(f.statut, "value", f.statut)))
         self.table.load_data(rows)
         self.table.autosize()
-        self.count_label.configure(text=f"{len(rows)} facture{'s' if len(rows) != 1 else ''}")
+        self.count_label.configure(text=f"{len(rows)} pièce{'s' if len(rows) != 1 else ''}")
 
     def export_excel(self):
         path = filedialog.asksaveasfilename(title="Exporter les factures", defaultextension=".xlsx", filetypes=[("Fichier Excel", "*.xlsx")], initialfile="factures_export.xlsx")
@@ -99,7 +105,7 @@ class FacturesView(BaseView):
         path = filedialog.askopenfilename(title="Choisir le fichier Excel", filetypes=[("Fichiers Excel", "*.xlsx")])
         if not path:
             return
-        if not messagebox.askyesno("Importer les anciennes factures", "Les factures existantes portant le même numéro seront ignorées.\nLes fournisseurs absents seront créés automatiquement.\n\nContinuer ?"):
+        if not messagebox.askyesno("Importer les anciennes factures", "Les pièces existantes portant le même numéro seront ignorées.\nLes fournisseurs absents seront créés automatiquement.\n\nContinuer ?"):
             return
         try:
             result = importer_factures_excel(path, self._current_user(), creer_fournisseurs=True)
@@ -117,7 +123,7 @@ class FacturesView(BaseView):
     def _selected(self):
         values = self.table.get_selected()
         if not values:
-            messagebox.showwarning("Sélection", "Sélectionnez une facture.")
+            messagebox.showwarning("Sélection", "Sélectionnez une pièce.")
             return None
         try:
             selected_id = int(values[0])
@@ -134,10 +140,11 @@ class FacturesView(BaseView):
         facture = self._selected()
         if not facture:
             return
-        if not messagebox.askyesno("Confirmation", f"Supprimer la facture « {facture.numero} » ?"):
+        libelle = getattr(facture, "type_piece", "Facture").lower()
+        if not messagebox.askyesno("Confirmation", f"Supprimer {libelle} « {facture.numero} » ?"):
             return
         try:
-            supprimer_facture(facture.id)
+            supprimer_facture(facture.id, self._current_user())
             self.refresh()
         except Exception as exc:
             messagebox.showerror("Erreur", f"Suppression impossible.\n\n{exc}")
@@ -150,21 +157,28 @@ class FacturesView(BaseView):
 
     def open_form_dialog(self, facture):
         dialog = tb.Toplevel(self)
-        dialog.title("Modifier la facture" if facture else "Nouvelle facture")
-        dialog.geometry("600x650")
+        dialog.title("Modifier la pièce" if facture else "Nouvelle facture / avoir")
+        dialog.geometry("600x720")
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         box = tb.Frame(dialog, padding=25)
         box.pack(fill="both", expand=True)
-        tb.Label(box, text="Modifier la facture" if facture else "Nouvelle facture", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 18))
+        tb.Label(box, text="Modifier la pièce" if facture else "Nouvelle facture / avoir", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 18))
+
+        tb.Label(box, text="Type de pièce *").pack(anchor="w", pady=(0, 3))
+        type_var = tk.StringVar(value=getattr(facture, "type_piece", "Facture") if facture else "Facture")
+        type_combo = tb.Combobox(box, textvariable=type_var, state="readonly", values=["Facture", "Avoir"])
+        type_combo.pack(fill="x", pady=(0, 8))
+
         entries = {}
-        for label, key, value in [("Numéro *", "numero", getattr(facture, "numero", "")), ("Date facture (AAAA-MM-JJ) *", "date_facture", getattr(facture, "date_facture", date.today())), ("Date échéance (AAAA-MM-JJ) *", "date_echeance", getattr(facture, "date_echeance", date.today())), ("Montant *", "montant", getattr(facture, "montant", "")), ("Commentaire", "commentaire", getattr(facture, "commentaire", "") or "")]:
+        for label, key, value in [("Numéro *", "numero", getattr(facture, "numero", "")), ("Date (AAAA-MM-JJ) *", "date_facture", getattr(facture, "date_facture", date.today())), ("Date échéance (AAAA-MM-JJ) *", "date_echeance", getattr(facture, "date_echeance", date.today())), ("Montant *", "montant", abs(getattr(facture, "montant", 0)) if facture else ""), ("Commentaire", "commentaire", getattr(facture, "commentaire", "") or "")]:
             tb.Label(box, text=label).pack(anchor="w", pady=(7, 3))
             e = tb.Entry(box)
             e.insert(0, str(value))
             e.pack(fill="x")
             entries[key] = e
+
         tb.Label(box, text="Fournisseur *").pack(anchor="w", pady=(7, 3))
         names = list(self._fournisseur_map().keys())
         fournisseur_var = tk.StringVar()
@@ -174,9 +188,22 @@ class FacturesView(BaseView):
             fournisseur_var.set(facture.fournisseur.nom)
         elif names:
             combo.current(0)
+
+        hint = tb.Label(box, text="Un avoir sera enregistré avec un montant négatif et diminuera la dette du fournisseur.", bootstyle="info")
+        hint.pack(anchor="w", pady=(12, 0))
+
+        def update_hint(*_):
+            if type_var.get() == "Avoir":
+                hint.configure(text="Avoir : le montant sera déduit de la dette fournisseur et ne pourra pas recevoir de paiement.")
+            else:
+                hint.configure(text="Facture : le montant augmente la dette fournisseur et peut recevoir des paiements.")
+        type_var.trace_add("write", update_hint)
+        update_hint()
+
         buttons = tb.Frame(box)
         buttons.pack(fill="x", pady=(25, 0))
         tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
+
         def save():
             numero = entries["numero"].get().strip()
             if not numero or not fournisseur_var.get():
@@ -186,25 +213,29 @@ class FacturesView(BaseView):
                 d_facture = datetime.strptime(entries["date_facture"].get().strip(), "%Y-%m-%d").date()
                 d_echeance = datetime.strptime(entries["date_echeance"].get().strip(), "%Y-%m-%d").date()
                 montant = float(entries["montant"].get().replace(",", "."))
-                if montant < 0:
-                    raise ValueError("Le montant doit être positif.")
+                if montant <= 0:
+                    raise ValueError("Le montant doit être strictement supérieur à zéro.")
                 if d_echeance < d_facture:
                     raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
                 fournisseur_id = self._fournisseur_map()[fournisseur_var.get()]
                 if facture:
-                    modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user())
+                    modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
                 else:
-                    ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user())
+                    ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
             except Exception as exc:
-                messagebox.showerror("Erreur", f"Impossible d'enregistrer la facture.\n\n{exc}", parent=dialog)
+                messagebox.showerror("Erreur", f"Impossible d'enregistrer la pièce.\n\n{exc}", parent=dialog)
                 return
             dialog.destroy()
             self.refresh()
+
         tb.Button(buttons, text="Enregistrer", bootstyle="success", command=save).pack(side="right")
 
     def open_payment_dialog(self):
         facture = self._selected()
         if not facture:
+            return
+        if getattr(facture, "type_piece", "Facture") == "Avoir":
+            messagebox.showinfo("Paiement", "Un avoir diminue la dette fournisseur et ne peut pas recevoir de paiement.")
             return
         if facture.reste <= 0:
             messagebox.showinfo("Paiement", "Cette facture est déjà entièrement payée.")
