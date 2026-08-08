@@ -72,6 +72,7 @@ def exporter_factures_excel(filepath):
 
 
 def creer_modele_factures_excel(filepath):
+    """Crée un modèle d'import vierge avec une feuille d'instructions."""
     path = Path(filepath)
     if path.suffix.lower() != ".xlsx":
         path = path.with_suffix(".xlsx")
@@ -86,12 +87,32 @@ def creer_modele_factures_excel(filepath):
     sheet.append(headers)
     for cell in sheet[1]:
         cell.font = Font(bold=True)
-    sheet.append([
-        "FAC-2026-001", "Exemple fournisseur", "2026-08-08", "2026-09-08", 100000,
-        25000, "2026-08-15", "Virement", "REF-001", "Exemple à supprimer"
-    ])
     for column in range(1, len(headers) + 1):
         sheet.column_dimensions[chr(64 + column)].width = 22
     sheet.freeze_panes = "A2"
+
+    instructions = workbook.create_sheet("Instructions")
+    instructions.append(["Colonne", "Obligatoire", "Description"])
+    for cell in instructions[1]:
+        cell.font = Font(bold=True)
+    rows = [
+        ("Numero", "Oui", "Numéro unique de la facture"),
+        ("Fournisseur", "Oui", "Nom du fournisseur"),
+        ("Date facture", "Oui", "AAAA-MM-JJ ou JJ/MM/AAAA"),
+        ("Date echeance", "Non", "Si vide, la date de facture sera utilisée"),
+        ("Montant", "Oui", "Montant total de la facture"),
+        ("Montant paye", "Non", "Montant déjà payé, de 0 au montant total"),
+        ("Date paiement", "Non", "Date du paiement historique"),
+        ("Mode paiement", "Non", "Espèces, Chèque, Virement, Carte, etc."),
+        ("Reference paiement", "Non", "Référence du règlement"),
+        ("Commentaire", "Non", "Note libre"),
+    ]
+    for row in rows:
+        instructions.append(row)
+    instructions.column_dimensions["A"].width = 24
+    instructions.column_dimensions["B"].width = 16
+    instructions.column_dimensions["C"].width = 65
+    instructions.freeze_panes = "A2"
+
     workbook.save(path)
     return path
