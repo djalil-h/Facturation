@@ -78,7 +78,10 @@ class Dashboard(BaseView):
         self.window = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
         self.inner.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.window, width=e.width))
-        self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(int(-e.delta / 120), "units"), add="+")
+        # Le binding est local au Canvas. bind_all() gardait des callbacks vers
+        # des Canvas détruits après un changement de vue et provoquait
+        # "invalid command name ...canvas".
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
 
         right = tb.Frame(content)
         right.grid(row=1, column=1, sticky="nsew")
@@ -92,6 +95,10 @@ class Dashboard(BaseView):
         due.grid(row=1, column=0, sticky="nsew")
         self.due = tb.Frame(due)
         self.due.pack(fill=BOTH, expand=True)
+
+    def _on_mousewheel(self, event):
+        if self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def refresh_dashboard(self):
         try:
@@ -148,36 +155,22 @@ class Dashboard(BaseView):
             statut = f.get("statut", "Impayée")
             if echeance and echeance < date.today() and f.get("type_piece") != "Avoir":
                 statut = "EN RETARD"
-            tree.insert("", "end", values=(f.get("numero", ""), echeance or "-", self.format_amount(f.get("reste", 0)), statut))
+            tree.insert("", "end", values=(f.get("numero", ""), self.format_date(echeance), self.format_amount(f.get("reste", 0)), statut))
         tree.pack(fill=X)
         action = tb.Frame(box)
         action.pack(fill=X, pady=(7, 0))
-        tb.Button(
-            action,
-            text="💰 Régler les factures",
-            bootstyle="success",
-            command=lambda s=supplier: self.open_supplier_payment(s),
-        ).pack(side=RIGHT)
-        tb.Button(
-            action,
-            text="Voir les factures",
-            bootstyle="secondary-outline",
-            command=lambda s=supplier: self.open_supplier_factures(s),
-        ).pack(side=RIGHT, padx=(0, 7))
+        tb.Button(action, text="💰 Régler les factures", bootstyle="success", command=lambda s=supplier: self.open_supplier_payment(s)).pack(side=RIGHT)
+        tb.Button(action, text="Voir les factures", bootstyle="secondary-outline", command=lambda s=supplier: self.open_supplier_factures(s)).pack(side=RIGHT, padx=(0, 7))
         tree.bind("<Double-1>", lambda _e, s=supplier: self.open_supplier_payment(s))
 
     def open_supplier_payment(self, supplier):
-        """Ouvre directement le règlement groupé pour le fournisseur cliqué."""
         root = self.winfo_toplevel()
         if not hasattr(root, "show_paiements"):
             return
         root.show_paiements()
         view = getattr(root, "current_view", None)
         if view is not None and hasattr(view, "open_bulk_payment_dialog"):
-            view.open_bulk_payment_dialog(
-                fournisseur_id=supplier.get("fournisseur_id"),
-                fournisseur_nom=supplier.get("fournisseur_nom"),
-            )
+            view.open_bulk_payment_dialog(fournisseur_id=supplier.get("fournisseur_id"), fournisseur_nom=supplier.get("fournisseur_nom"))
 
     def open_supplier_factures(self, supplier):
         root = self.winfo_toplevel()
@@ -211,12 +204,23 @@ class Dashboard(BaseView):
         for due_date, supplier, number, remaining in items[:8]:
             row = tb.Frame(self.due, padding=(2, 6))
             row.pack(fill=X)
-            tb.Label(row, text=str(due_date), width=11).pack(side=LEFT)
+            tb.Label(row, text=self.format_date(due_date), width=11).pack(side=LEFT)
             tb.Label(row, text=supplier, font=("Segoe UI", 9, "bold"), anchor="w").pack(side=LEFT, fill=X, expand=True)
             tb.Label(row, text=self.format_amount(remaining), bootstyle="danger").pack(side=RIGHT)
 
     def search_supplier(self, text=""):
         self.refresh_suppliers(text)
+
+    @staticmethod
+    def format_date(value):
+        if not value:
+            return "-"
+        if hasattr(value, "strftime"):
+            return value.strftime("%d/%m/%Y")
+        try:
+            return date.fromisoformat(str(value)[:10]).strftime("%d/%m/%Y")
+        except (TypeError, ValueError):
+            return str(value)
 
     @staticmethod
     def format_amount(value):
