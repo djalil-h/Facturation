@@ -3,19 +3,12 @@ from datetime import date
 from sqlalchemy.orm import selectinload
 
 from database.db import get_session
-from database.models import (
-    Facture,
-    Fournisseur,
-    Paiement,
-    Historique,
-    StatutFacture,
-)
+from database.models import Facture, Fournisseur, Paiement, Historique, StatutFacture
 
 
 def _recalculer_statut(facture):
     facture.montant_paye = max(0, facture.montant_paye or 0)
     facture.reste = max(0, facture.montant - facture.montant_paye)
-
     if facture.reste == 0:
         facture.statut = StatutFacture.PAYEE
     elif facture.montant_paye > 0:
@@ -33,6 +26,13 @@ def _validate_invoice_dates_and_amount(date_facture, date_echeance, montant):
         raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
 
 
+def _validate_payment_metadata(mode, reference):
+    if not mode or not str(mode).strip():
+        raise ValueError("Le mode de paiement est obligatoire.")
+    if reference is not None and len(str(reference).strip()) > 100:
+        raise ValueError("La référence du paiement ne peut pas dépasser 100 caractères.")
+
+
 def _user_id(utilisateur):
     return getattr(utilisateur, "id", None)
 
@@ -48,27 +48,14 @@ def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant
         existe = session.query(Facture).filter_by(numero=numero).first()
         if existe:
             raise ValueError("Numéro de facture déjà utilisé.")
-
-        facture = Facture(
-            numero=numero,
-            fournisseur_id=fournisseur_id,
-            date_facture=date_facture,
-            date_echeance=date_echeance,
-            montant=montant,
-            montant_paye=0,
-            reste=montant,
-            statut=StatutFacture.IMPAYEE,
-            commentaire=commentaire,
-            created_by=_user_id(utilisateur),
-        )
+        facture = Facture(numero=numero, fournisseur_id=fournisseur_id, date_facture=date_facture,
+                          date_echeance=date_echeance, montant=montant, montant_paye=0,
+                          reste=montant, statut=StatutFacture.IMPAYEE, commentaire=commentaire,
+                          created_by=_user_id(utilisateur))
         session.add(facture)
         session.flush()
-        session.add(Historique(
-            facture_id=facture.id,
-            action="Création",
-            details=f"Facture {numero} créée.",
-            utilisateur=_username(utilisateur),
-        ))
+        session.add(Historique(facture_id=facture.id, action="Création",
+                               details=f"Facture {numero} créée.", utilisateur=_username(utilisateur)))
         session.commit()
         session.refresh(facture)
         return facture
@@ -82,25 +69,27 @@ def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant
 def liste_factures():
     session = get_session()
     try:
-        return (
-            session.query(Facture)
-            .options(selectinload(Facture.fournisseur))
-            .order_by(Facture.date_facture.desc())
-            .all()
-        )
+        return session.query(Facture).options(selectinload(Facture.fournisseur)).order_by(Facture.date_facture.desc()).all()
     finally:
         session.close()
 
 
-def supprimer_facture(facture_id):
+def supprimer_facture(facture_id, utilisateur=None):
     session = get_session()
     try:
         facture = session.get(Facture, facture_id)
-        if facture:
-            session.delete(facture)
-            session.commit()
-            return True
-        return False
+        if facture is None:
+            return False
+        if (facture.montant_paye or 0) > 0:
+            raise ValueError(
+                f"La facture {facture.numero} possède déjà des paiements ({facture.montant_paye:.2f} DA). "
+                "Elle ne peut pas être supprimée."
+            )
+        session.add(Historique(facture_id=facture.id, action="Suppression",
+                               details=f"Facture {facture.numero} supprimée.", utilisateur=_username(utilisateur)))
+        session.delete(facture)
+        session.commit()
+        return True
     except Exception:
         session.rollback()
         raise
@@ -115,33 +104,17 @@ def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_eche
         facture = session.get(Facture, facture_id)
         if facture is None:
             return False
-
         if montant < (facture.montant_paye or 0):
-            raise ValueError(
-                f"Le nouveau montant ({montant:.2f} DA) ne peut pas être inférieur au montant déjà payé ({facture.montant_paye:.2f} DA)."
-            )
-
-        duplicate = (
-            session.query(Facture)
-            .filter(Facture.numero == numero, Facture.id != facture_id)
-            .first()
-        )
+            raise ValueError(f"Le nouveau montant ({montant:.2f} DA) ne peut pas être inférieur au montant déjà payé ({facture.montant_paye:.2f} DA).")
+        duplicate = session.query(Facture).filter(Facture.numero == numero, Facture.id != facture_id).first()
         if duplicate:
             raise ValueError("Numéro de facture déjà utilisé.")
-
-        facture.numero = numero
-        facture.fournisseur_id = fournisseur_id
-        facture.date_facture = date_facture
-        facture.date_echeance = date_echeance
-        facture.commentaire = commentaire
-        facture.montant = montant
+        facture.numero, facture.fournisseur_id = numero, fournisseur_id
+        facture.date_facture, facture.date_echeance = date_facture, date_echeance
+        facture.commentaire, facture.montant = commentaire, montant
         _recalculer_statut(facture)
-        session.add(Historique(
-            facture_id=facture.id,
-            action="Modification",
-            details=f"Facture {numero} modifiée",
-            utilisateur=_username(utilisateur),
-        ))
+        session.add(Historique(facture_id=facture.id, action="Modification",
+                               details=f"Facture {numero} modifiée", utilisateur=_username(utilisateur)))
         session.commit()
         return True
     except Exception:
@@ -152,33 +125,28 @@ def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_eche
 
 
 def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
+    _validate_payment_metadata(mode, reference)
     session = get_session()
     try:
         facture = session.get(Facture, facture_id)
         if facture is None:
             raise ValueError("Facture introuvable.")
+        reste = float(facture.reste or 0)
+        montant = float(montant)
         if montant <= 0:
             raise ValueError("Le montant du paiement doit être supérieur à zéro.")
-        if montant > facture.reste:
+        if reste <= 0:
+            raise ValueError("Cette facture est déjà entièrement réglée.")
+        if montant > reste:
             raise ValueError("Le paiement dépasse le reste à payer.")
-
-        paiement = Paiement(
-            facture_id=facture.id,
-            montant=montant,
-            date_paiement=date.today(),
-            mode_paiement=mode,
-            reference=reference,
-            utilisateur_id=_user_id(utilisateur),
-        )
+        paiement = Paiement(facture_id=facture.id, montant=montant, date_paiement=date.today(),
+                            mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None),
+                            utilisateur_id=_user_id(utilisateur))
         facture.montant_paye += montant
         _recalculer_statut(facture)
         session.add(paiement)
-        session.add(Historique(
-            facture_id=facture.id,
-            action="Paiement",
-            details=f"Paiement de {montant:.2f} DA",
-            utilisateur=_username(utilisateur),
-        ))
+        session.add(Historique(facture_id=facture.id, action="Paiement",
+                               details=f"Paiement de {montant:.2f} DA", utilisateur=_username(utilisateur)))
         session.commit()
         return paiement
     except Exception:
@@ -189,54 +157,31 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
 
 
 def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
-    """Règle intégralement plusieurs factures dans une seule opération.
-
-    Un paiement distinct est créé pour chaque facture afin de conserver
-    un historique et un solde corrects par facture. L'opération est atomique:
-    si une facture est invalide, aucun paiement n'est enregistré.
-    """
+    _validate_payment_metadata(mode, reference)
     ids = list(dict.fromkeys(facture_ids or []))
     if not ids:
         raise ValueError("Sélectionnez au moins une facture.")
-
     session = get_session()
     try:
-        factures = (
-            session.query(Facture)
-            .filter(Facture.id.in_(ids))
-            .order_by(Facture.id.asc())
-            .with_for_update()
-            .all()
-        )
+        factures = session.query(Facture).filter(Facture.id.in_(ids)).order_by(Facture.id.asc()).with_for_update().all()
         if len(factures) != len(ids):
             raise ValueError("Une ou plusieurs factures sélectionnées sont introuvables.")
-
-        paiements = []
-        total = 0.0
+        paiements, total = [], 0.0
         for facture in factures:
             reste = float(facture.reste or 0)
             if reste <= 0:
                 raise ValueError(f"La facture {facture.numero} est déjà réglée.")
-            paiement = Paiement(
-                facture_id=facture.id,
-                montant=reste,
-                date_paiement=date.today(),
-                mode_paiement=mode,
-                reference=reference,
-                utilisateur_id=_user_id(utilisateur),
-            )
+            paiement = Paiement(facture_id=facture.id, montant=reste, date_paiement=date.today(),
+                                mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None),
+                                utilisateur_id=_user_id(utilisateur))
             facture.montant_paye += reste
             _recalculer_statut(facture)
             session.add(paiement)
-            session.add(Historique(
-                facture_id=facture.id,
-                action="Paiement groupé",
-                details=f"Facture {facture.numero} réglée intégralement : {reste:.2f} DA",
-                utilisateur=_username(utilisateur),
-            ))
+            session.add(Historique(facture_id=facture.id, action="Paiement groupé",
+                                   details=f"Facture {facture.numero} réglée intégralement : {reste:.2f} DA",
+                                   utilisateur=_username(utilisateur)))
             paiements.append(paiement)
             total += reste
-
         session.commit()
         return {"factures": len(factures), "paiements": paiements, "total": total}
     except Exception:
@@ -249,12 +194,7 @@ def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
 def liste_paiements(facture_id):
     session = get_session()
     try:
-        return (
-            session.query(Paiement)
-            .filter_by(facture_id=facture_id)
-            .order_by(Paiement.date_paiement.desc())
-            .all()
-        )
+        return session.query(Paiement).filter_by(facture_id=facture_id).order_by(Paiement.date_paiement.desc()).all()
     finally:
         session.close()
 
