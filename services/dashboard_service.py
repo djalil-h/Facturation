@@ -20,6 +20,7 @@ class DashboardService:
             reste = max(0, montant_total - montant_paye)
             aujourd_hui = date.today()
             statut_payee = StatutFacture.PAYEE
+            limite_echeance = aujourd_hui + timedelta(days=7)
 
             retard = (
                 session.query(Facture)
@@ -31,18 +32,28 @@ class DashboardService:
                 .filter(
                     Facture.statut != statut_payee,
                     Facture.date_echeance >= aujourd_hui,
-                    Facture.date_echeance <= aujourd_hui + timedelta(days=7),
+                    Facture.date_echeance <= limite_echeance,
                 )
                 .count()
             )
 
-            # The dashboard returns ORM invoices after this session is closed.
-            # Eager loading prevents DetachedInstanceError when the view reads
-            # facture.fournisseur.nom outside the session.
             dernieres = (
                 session.query(Facture)
                 .options(selectinload(Facture.fournisseur))
                 .order_by(Facture.id.desc())
+                .limit(10)
+                .all()
+            )
+
+            # Dedicated list for the dashboard: overdue first, then upcoming
+            # due dates. This is intentionally separate from "dernieres" so
+            # an old invoice cannot incorrectly appear as an upcoming due item.
+            echeances = (
+                session.query(Facture)
+                .options(selectinload(Facture.fournisseur))
+                .filter(Facture.statut != statut_payee)
+                .filter(Facture.date_echeance <= limite_echeance)
+                .order_by(Facture.date_echeance.asc(), Facture.id.asc())
                 .limit(10)
                 .all()
             )
@@ -63,7 +74,7 @@ class DashboardService:
             if retard:
                 notifications.append(f"{retard} facture(s) en retard")
             if echeance:
-                notifications.append(f"{echeance} facture(s) arrivent à échéance")
+                notifications.append(f"{echeance} facture(s) arrivent à échéance sous 7 jours")
 
             return {
                 "total_factures": total_factures,
@@ -73,6 +84,7 @@ class DashboardService:
                 "retard": retard,
                 "echeance": echeance,
                 "dernieres": dernieres,
+                "echeances": echeances,
                 "top_fournisseurs": top_fournisseurs,
                 "notifications": notifications,
             }
