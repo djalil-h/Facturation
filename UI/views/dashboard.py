@@ -9,7 +9,7 @@ from UI.base_view import BaseView
 from UI.widgets.stat_card import StatCard
 from UI.widgets.search_bar import SearchBar
 from services.dashboard_service import DashboardService
-from services.facture_service import regler_plusieurs_factures
+from services.reglement_service import regler_selection_factures_avoirs
 
 
 class Dashboard(BaseView):
@@ -178,10 +178,12 @@ class Dashboard(BaseView):
 
     def open_supplier_detail(self, fournisseur):
         factures = [f for f in fournisseur.get("factures", []) if f.get("type_piece") != "Avoir" and float(f.get("reste", 0) or 0) > 0]
+        avoirs = [f for f in fournisseur.get("factures", []) if f.get("type_piece") == "Avoir" and float(f.get("reste", 0) or 0) < 0]
+
         dialog = tb.Toplevel(self)
         dialog.title(f"Dette fournisseur - {fournisseur['fournisseur_nom']}")
-        dialog.geometry("900x680")
-        dialog.minsize(800, 580)
+        dialog.geometry("920x740")
+        dialog.minsize(820, 620)
         dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         box = tb.Frame(dialog, padding=20)
@@ -193,14 +195,14 @@ class Dashboard(BaseView):
         header.grid(row=0, column=0, sticky="ew")
         tb.Label(header, text=fournisseur["fournisseur_nom"], font=("Segoe UI", 22, "bold")).pack(side=LEFT)
         dette = float(fournisseur.get("dette", 0) or 0)
-        credit = float(fournisseur.get("credit_disponible", 0) or 0)
         if dette >= 0:
             tb.Label(header, text=f"Dette nette : {self.format_amount(dette)}", bootstyle="danger", font=("Segoe UI", 14, "bold")).pack(side=RIGHT)
         else:
             tb.Label(header, text=f"Crédit : {self.format_amount(abs(dette))}", bootstyle="success", font=("Segoe UI", 14, "bold")).pack(side=RIGHT)
-        subtitle = f"{len(factures)} facture(s) avec un reste à payer"
-        if credit > 0:
-            subtitle += f" • Avoir disponible : {self.format_amount(credit)}"
+
+        subtitle = f"{len(factures)} facture(s) à régler"
+        if avoirs:
+            subtitle += f" • {len(avoirs)} avoir(s) disponible(s)"
         tb.Label(box, text=subtitle, bootstyle="secondary").grid(row=1, column=0, sticky="w", pady=(5, 8))
 
         controls = tb.Frame(box)
@@ -210,7 +212,7 @@ class Dashboard(BaseView):
 
         selection_bar = tb.Frame(controls)
         selection_bar.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        selected_label = tb.Label(selection_bar, text="0 facture sélectionnée")
+        selected_label = tb.Label(selection_bar, text="0 facture(s) • 0 avoir(s) sélectionné(s)")
         selected_label.pack(side=LEFT)
 
         frame = tb.Frame(controls)
@@ -227,50 +229,74 @@ class Dashboard(BaseView):
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        selections = {}
-        for facture in factures:
-            var = tk.BooleanVar(value=False)
-            selections[facture["id"]] = var
-            row = tb.Frame(inner, padding=8, bootstyle="light")
-            row.pack(fill=X, pady=3)
-            text = f"{facture['numero']}   |   Échéance : {facture['date_echeance']}   |   Montant : {self.format_amount(facture['montant'])}   |   Payé : {self.format_amount(facture['montant_paye'])}   |   Reste : {self.format_amount(facture['reste'])}"
-            cb = tb.Checkbutton(row, text=text, variable=var, bootstyle="primary")
-            cb.pack(side=LEFT, fill=X, expand=True, anchor="w")
+        invoice_selections = {}
+        avoir_selections = {}
 
-        if not factures:
-            tb.Label(inner, text="✓ Aucune dette sur ce fournisseur.", bootstyle="success").pack(anchor="w", pady=20)
+        if factures:
+            tb.Label(inner, text="FACTURES À RÉGLER", font=("Segoe UI", 11, "bold"), bootstyle="primary").pack(anchor="w", pady=(4, 6))
+            for facture in factures:
+                var = tk.BooleanVar(value=False)
+                invoice_selections[facture["id"]] = var
+                row = tb.Frame(inner, padding=8, bootstyle="light")
+                row.pack(fill=X, pady=3)
+                text = f"{facture['numero']}   |   Échéance : {facture['date_echeance']}   |   Montant : {self.format_amount(facture['montant'])}   |   Payé : {self.format_amount(facture['montant_paye'])}   |   Reste : {self.format_amount(facture['reste'])}"
+                tb.Checkbutton(row, text=text, variable=var, bootstyle="primary").pack(side=LEFT, fill=X, expand=True, anchor="w")
+        else:
+            tb.Label(inner, text="✓ Aucune facture avec reste à payer.", bootstyle="success").pack(anchor="w", pady=10)
 
-        total_var = tk.StringVar(value="Total à payer : 0.00 DA")
-        credit_var = tk.StringVar(value="Avoir imputable : 0.00 DA")
-        tb.Label(box, textvariable=credit_var, bootstyle="info", font=("Segoe UI", 11)).grid(row=3, column=0, sticky="w", pady=(12, 2))
-        tb.Label(box, textvariable=total_var, font=("Segoe UI", 13, "bold")).grid(row=4, column=0, sticky="w", pady=(0, 8))
+        if avoirs:
+            tb.Label(inner, text="AVOIRS DISPONIBLES", font=("Segoe UI", 11, "bold"), bootstyle="info").pack(anchor="w", pady=(15, 6))
+            for avoir in avoirs:
+                var = tk.BooleanVar(value=False)
+                avoir_selections[avoir["id"]] = var
+                row = tb.Frame(inner, padding=8, bootstyle="info")
+                row.pack(fill=X, pady=3)
+                credit = abs(float(avoir["reste"] or 0))
+                text = f"{avoir['numero']}   |   Date : {avoir['date_facture']}   |   Avoir : {self.format_amount(credit)}   |   Crédit restant : {self.format_amount(credit)}"
+                tb.Checkbutton(row, text=text, variable=var, bootstyle="info").pack(side=LEFT, fill=X, expand=True, anchor="w")
+        else:
+            tb.Label(inner, text="Aucun avoir disponible.", bootstyle="secondary").pack(anchor="w", pady=10)
+
+        total_var = tk.StringVar(value="Total avant avoir : 0.00 DA")
+        credit_var = tk.StringVar(value="Avoir sélectionné : 0.00 DA")
+        cash_var = tk.StringVar(value="Montant réellement payé : 0.00 DA")
+        tb.Label(box, textvariable=total_var, font=("Segoe UI", 11)).grid(row=3, column=0, sticky="w", pady=(10, 2))
+        tb.Label(box, textvariable=credit_var, bootstyle="info", font=("Segoe UI", 11)).grid(row=4, column=0, sticky="w", pady=2)
+        tb.Label(box, textvariable=cash_var, font=("Segoe UI", 13, "bold")).grid(row=5, column=0, sticky="w", pady=(2, 8))
 
         def update_total(*_):
-            ids = [fid for fid, var in selections.items() if var.get()]
-            brut = sum(float(f["reste"] or 0) for f in factures if selections[f["id"]].get())
-            avoir_imputable = min(brut, credit)
+            selected_facture_ids = [fid for fid, var in invoice_selections.items() if var.get()]
+            selected_avoir_ids = [aid for aid, var in avoir_selections.items() if var.get()]
+            brut = sum(float(f["reste"] or 0) for f in factures if invoice_selections[f["id"]].get())
+            credit_selectionne = sum(abs(float(a["reste"] or 0)) for a in avoirs if avoir_selections[a["id"]].get())
+            avoir_imputable = min(brut, credit_selectionne)
             cash = max(0.0, brut - avoir_imputable)
-            selected_label.configure(text=f"{len(ids)} facture(s) sélectionnée(s)")
-            credit_var.set(f"Avoir imputable sur cette sélection : {avoir_imputable:,.2f} DA")
-            total_var.set(f"Total à payer après avoir : {cash:,.2f} DA")
+            selected_label.configure(text=f"{len(selected_facture_ids)} facture(s) • {len(selected_avoir_ids)} avoir(s) sélectionné(s)")
+            total_var.set(f"Total avant avoir : {brut:,.2f} DA")
+            credit_var.set(f"Avoir sélectionné : {credit_selectionne:,.2f} DA  |  Imputable : {avoir_imputable:,.2f} DA")
+            cash_var.set(f"Montant réellement payé : {cash:,.2f} DA")
 
         def select_all():
-            for var in selections.values():
+            for var in invoice_selections.values():
+                var.set(True)
+            for var in avoir_selections.values():
                 var.set(True)
             update_total()
 
         def clear_all():
-            for var in selections.values():
+            for var in invoice_selections.values():
+                var.set(False)
+            for var in avoir_selections.values():
                 var.set(False)
             update_total()
 
         tb.Button(selection_bar, text="☑ Tout sélectionner", bootstyle="secondary-outline", command=select_all).pack(side=LEFT, padx=5)
         tb.Button(selection_bar, text="☐ Tout désélectionner", bootstyle="secondary-outline", command=clear_all).pack(side=LEFT, padx=5)
-        for var in selections.values():
+        for var in list(invoice_selections.values()) + list(avoir_selections.values()):
             var.trace_add("write", update_total)
 
         form = tb.Frame(box)
-        form.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        form.grid(row=6, column=0, sticky="ew", pady=(0, 8))
         tb.Label(form, text="Mode").pack(side=LEFT, padx=(0, 8))
         mode = tb.Combobox(form, state="readonly", values=["Espèces", "Chèque", "Virement", "Carte", "Autre"], width=16)
         mode.current(0)
@@ -280,18 +306,24 @@ class Dashboard(BaseView):
         reference.pack(side=LEFT, fill=X, expand=True)
 
         buttons = tb.Frame(box)
-        buttons.grid(row=6, column=0, sticky="ew", pady=(8, 0))
+        buttons.grid(row=7, column=0, sticky="ew", pady=(8, 0))
 
         def pay_selected():
-            ids = [fid for fid, var in selections.items() if var.get()]
-            if not ids:
-                messagebox.showwarning("Règlement", "Sélectionnez au moins une facture.", parent=dialog)
+            selected_facture_ids = [fid for fid, var in invoice_selections.items() if var.get()]
+            selected_avoir_ids = [aid for aid, var in avoir_selections.items() if var.get()]
+            if not selected_facture_ids:
+                messagebox.showwarning("Règlement", "Sélectionnez au moins une facture à régler.", parent=dialog)
                 return
-            brut = sum(float(f["reste"] or 0) for f in factures if selections[f["id"]].get())
-            avoir_imputable = min(brut, credit)
+            brut = sum(float(f["reste"] or 0) for f in factures if invoice_selections[f["id"]].get())
+            credit_selectionne = sum(abs(float(a["reste"] or 0)) for a in avoirs if avoir_selections[a["id"]].get())
+            avoir_imputable = min(brut, credit_selectionne)
             cash = max(0.0, brut - avoir_imputable)
+            if cash <= 0 and avoir_imputable <= 0:
+                messagebox.showwarning("Règlement", "Aucun montant à régler. Sélectionnez au moins un avoir ou une facture avec un reste positif.", parent=dialog)
+                return
             confirmation = (
-                f"Factures sélectionnées : {len(ids)}\n"
+                f"Factures sélectionnées : {len(selected_facture_ids)}\n"
+                f"Avoirs sélectionnés : {len(selected_avoir_ids)}\n"
                 f"Total avant avoir : {brut:,.2f} DA\n"
                 f"Avoir imputé : {avoir_imputable:,.2f} DA\n"
                 f"Montant réellement payé : {cash:,.2f} DA\n\n"
@@ -300,14 +332,22 @@ class Dashboard(BaseView):
             if not messagebox.askyesno("Confirmer le règlement", confirmation, parent=dialog):
                 return
             try:
-                result = regler_plusieurs_factures(ids, mode.get(), reference.get().strip(), self.winfo_toplevel().get_current_user())
+                result = regler_selection_factures_avoirs(
+                    selected_facture_ids,
+                    selected_avoir_ids,
+                    mode.get(),
+                    reference.get().strip(),
+                    self.winfo_toplevel().get_current_user(),
+                )
             except Exception as exc:
                 messagebox.showerror("Règlement refusé", str(exc), parent=dialog)
                 return
             messagebox.showinfo(
                 "Règlement effectué",
                 f"{result['factures']} facture(s) traitée(s).\n"
+                f"Avoir sélectionné : {result['avoir_selectionne']:,.2f} DA\n"
                 f"Avoir imputé : {result['avoir_impute']:,.2f} DA\n"
+                f"Avoir non utilisé : {result['avoir_non_utilise']:,.2f} DA\n"
                 f"Total payé : {result['total']:,.2f} DA",
                 parent=dialog,
             )
@@ -315,7 +355,7 @@ class Dashboard(BaseView):
             self.refresh_dashboard()
 
         tb.Button(buttons, text="Fermer", bootstyle="secondary-outline", command=dialog.destroy).pack(side=RIGHT, padx=5)
-        tb.Button(buttons, text="💰 Régler les factures sélectionnées", bootstyle="success", command=pay_selected).pack(side=RIGHT)
+        tb.Button(buttons, text="💰 Régler la sélection", bootstyle="success", command=pay_selected).pack(side=RIGHT)
         update_total()
 
     def refresh_notifications(self):
