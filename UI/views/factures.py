@@ -15,7 +15,6 @@ from services.facture_service import (
     rechercher_factures,
 )
 from services.fournisseur_service import liste_fournisseurs
-from database.models import StatutFacture
 
 
 class FacturesView(BaseView):
@@ -25,6 +24,9 @@ class FacturesView(BaseView):
         self.fournisseurs = []
         self._build()
         self.refresh()
+
+    def _current_user(self):
+        return self.winfo_toplevel().get_current_user()
 
     def _build(self):
         header = tb.Frame(self.body)
@@ -84,15 +86,11 @@ class FacturesView(BaseView):
         rows = []
         for f in self.factures:
             rows.append((
-                f.id,
-                f.numero,
+                f.id, f.numero,
                 getattr(f.fournisseur, "nom", "") if f.fournisseur else "",
-                f.date_facture,
-                f.date_echeance,
-                f"{f.montant:,.2f} DA",
-                f"{f.montant_paye:,.2f} DA",
-                f"{f.reste:,.2f} DA",
-                getattr(f.statut, "value", f.statut),
+                f.date_facture, f.date_echeance,
+                f"{f.montant:,.2f} DA", f"{f.montant_paye:,.2f} DA",
+                f"{f.reste:,.2f} DA", getattr(f.statut, "value", f.statut),
             ))
         self.table.load_data(rows)
         self.table.autosize()
@@ -103,7 +101,11 @@ class FacturesView(BaseView):
         if not values:
             messagebox.showwarning("Sélection", "Sélectionnez une facture.")
             return None
-        return next((f for f in self.factures if f.id == int(values[0])), None)
+        try:
+            selected_id = int(values[0])
+        except (TypeError, ValueError):
+            return None
+        return next((f for f in self.factures if f.id == selected_id), None)
 
     def _edit_selected(self, _event=None):
         facture = self._selected()
@@ -179,10 +181,11 @@ class FacturesView(BaseView):
                 if montant < 0:
                     raise ValueError("Le montant doit être positif.")
                 fournisseur_id = self._fournisseur_map()[fournisseur_var.get()]
+                utilisateur = self._current_user()
                 if facture:
-                    modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self.master.master.get_current_user())
+                    modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), utilisateur)
                 else:
-                    ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self.master.master.get_current_user())
+                    ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), utilisateur)
             except Exception as exc:
                 messagebox.showerror("Erreur", f"Impossible d'enregistrer la facture.\n\n{exc}", parent=dialog)
                 return
@@ -225,8 +228,7 @@ class FacturesView(BaseView):
         def save():
             try:
                 montant = float(amount.get().replace(",", "."))
-                utilisateur = self.master.master.get_current_user()
-                ajouter_paiement(facture.id, montant, mode.get(), reference.get().strip(), utilisateur)
+                ajouter_paiement(facture.id, montant, mode.get(), reference.get().strip(), self._current_user())
             except Exception as exc:
                 messagebox.showerror("Paiement refusé", str(exc), parent=dialog)
                 return
