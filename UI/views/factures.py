@@ -8,6 +8,7 @@ from UI.widgets.modern_table import ModernTable
 from services.facture_service import ajouter_facture, liste_factures, modifier_facture, supprimer_facture, ajouter_paiement, liste_paiements, rechercher_factures
 from services.fournisseur_service import liste_fournisseurs
 from services.import_service import importer_factures_excel
+from services.export_service import exporter_factures_excel, creer_modele_factures_excel
 
 
 class FacturesView(BaseView):
@@ -27,6 +28,8 @@ class FacturesView(BaseView):
         tb.Label(header, text="Factures", font=("Segoe UI", 22, "bold")).pack(side="left")
         actions = tb.Frame(header)
         actions.pack(side="right")
+        tb.Button(actions, text="⬇ Exporter Excel", bootstyle="success-outline", command=self.export_excel).pack(side="left", padx=4)
+        tb.Button(actions, text="📄 Modèle Excel", bootstyle="secondary-outline", command=self.export_template).pack(side="left", padx=4)
         tb.Button(actions, text="⬆ Importer Excel", bootstyle="info-outline", command=self.import_excel).pack(side="left", padx=4)
         tb.Button(actions, text="＋ Nouvelle facture", bootstyle="success", command=self.open_add_dialog).pack(side="left", padx=4)
 
@@ -71,6 +74,26 @@ class FacturesView(BaseView):
         self.table.load_data(rows)
         self.table.autosize()
         self.count_label.configure(text=f"{len(rows)} facture{'s' if len(rows) != 1 else ''}")
+
+    def export_excel(self):
+        path = filedialog.asksaveasfilename(title="Exporter les factures", defaultextension=".xlsx", filetypes=[("Fichier Excel", "*.xlsx")], initialfile="factures_export.xlsx")
+        if not path:
+            return
+        try:
+            exporter_factures_excel(path)
+            messagebox.showinfo("Export Excel", f"Export terminé.\n\nFichier : {path}")
+        except Exception as exc:
+            messagebox.showerror("Export Excel", f"Impossible d'exporter les factures.\n\n{exc}")
+
+    def export_template(self):
+        path = filedialog.asksaveasfilename(title="Créer le modèle Excel", defaultextension=".xlsx", filetypes=[("Fichier Excel", "*.xlsx")], initialfile="modele_import_factures.xlsx")
+        if not path:
+            return
+        try:
+            creer_modele_factures_excel(path)
+            messagebox.showinfo("Modèle Excel", f"Modèle créé.\n\nTu peux le remplir puis utiliser « Importer Excel ».\n\nFichier : {path}")
+        except Exception as exc:
+            messagebox.showerror("Modèle Excel", f"Impossible de créer le modèle.\n\n{exc}")
 
     def import_excel(self):
         path = filedialog.askopenfilename(title="Choisir le fichier Excel", filetypes=[("Fichiers Excel", "*.xlsx")])
@@ -165,6 +188,8 @@ class FacturesView(BaseView):
                 montant = float(entries["montant"].get().replace(",", "."))
                 if montant < 0:
                     raise ValueError("Le montant doit être positif.")
+                if d_echeance < d_facture:
+                    raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
                 fournisseur_id = self._fournisseur_map()[fournisseur_var.get()]
                 if facture:
                     modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user())
