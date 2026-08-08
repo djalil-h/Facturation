@@ -4,7 +4,12 @@ import ttkbootstrap as tb
 
 from UI.base_view import BaseView
 from UI.widgets.modern_table import ModernTable
-from services.facture_service import liste_factures, ajouter_paiement, liste_paiements
+from services.facture_service import (
+    liste_factures,
+    ajouter_paiement,
+    liste_paiements,
+    regler_plusieurs_factures,
+)
 
 
 class PaiementsView(BaseView):
@@ -24,7 +29,21 @@ class PaiementsView(BaseView):
         header = tb.Frame(self.body)
         header.pack(fill="x", pady=(0, 15))
         tb.Label(header, text="Paiements", font=("Segoe UI", 22, "bold")).pack(side="left")
-        tb.Button(header, text="＋ Nouveau paiement", bootstyle="success", command=self.open_payment_dialog).pack(side="right")
+
+        actions = tb.Frame(header)
+        actions.pack(side="right")
+        tb.Button(
+            actions,
+            text="☑ Régler plusieurs factures",
+            bootstyle="warning",
+            command=self.open_bulk_payment_dialog,
+        ).pack(side="left", padx=(0, 8))
+        tb.Button(
+            actions,
+            text="＋ Nouveau paiement",
+            bootstyle="success",
+            command=self.open_payment_dialog,
+        ).pack(side="left")
 
         toolbar = tb.Frame(self.body)
         toolbar.pack(fill="x", pady=(0, 12))
@@ -123,3 +142,91 @@ class PaiementsView(BaseView):
         buttons.pack(fill="x", pady=25)
         tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
         tb.Button(buttons, text="Enregistrer", bootstyle="success", command=save).pack(side="right")
+
+    def open_bulk_payment_dialog(self):
+        """Permet de solder plusieurs factures dans une seule opération."""
+        impayees = [f for f in self.factures if float(f.reste or 0) > 0]
+        if not impayees:
+            messagebox.showinfo("Règlement groupé", "Aucune facture avec un reste à payer.")
+            return
+
+        dialog = tb.Toplevel(self)
+        dialog.title("Régler plusieurs factures")
+        dialog.geometry("720x650")
+        dialog.minsize(650, 550)
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+
+        box = tb.Frame(dialog, padding=20)
+        box.pack(fill="both", expand=True)
+        tb.Label(box, text="Régler plusieurs factures", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        tb.Label(
+            box,
+            text="Cochez les factures à régler intégralement. Un paiement sera créé pour chaque facture.",
+            bootstyle="secondary",
+        ).pack(anchor="w", pady=(4, 15))
+
+        list_frame = tb.Frame(box)
+        list_frame.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        scrollbar = tb.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        inner = tb.Frame(canvas)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        selections = {}
+        for facture in impayees:
+            var = tk.BooleanVar(value=False)
+            selections[facture.id] = var
+            fournisseur = getattr(getattr(facture, "fournisseur", None), "nom", "Fournisseur inconnu")
+            texte = f"{facture.numero}  |  {fournisseur}  |  reste : {float(facture.reste):,.2f} DA"
+            tb.Checkbutton(inner, text=texte, variable=var, bootstyle="primary").pack(fill="x", anchor="w", pady=5, padx=5)
+
+        total_var = tk.StringVar(value="Total sélectionné : 0.00 DA")
+        tb.Label(box, textvariable=total_var, font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(12, 8))
+
+        def update_total(*_):
+            total = sum(float(f.reste or 0) for f in impayees if selections[f.id].get())
+            total_var.set(f"Total sélectionné : {total:,.2f} DA")
+
+        for var in selections.values():
+            var.trace_add("write", update_total)
+
+        form = tb.Frame(box)
+        form.pack(fill="x", pady=(4, 8))
+        tb.Label(form, text="Mode").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        mode = tb.Combobox(form, state="readonly", values=["Espèces", "Chèque", "Virement", "Carte", "Autre"], width=18)
+        mode.current(0)
+        mode.grid(row=0, column=1, sticky="w", padx=(0, 25))
+        tb.Label(form, text="Référence").grid(row=0, column=2, sticky="w", padx=(0, 8))
+        reference = tb.Entry(form, width=25)
+        reference.grid(row=0, column=3, sticky="ew")
+        form.columnconfigure(3, weight=1)
+
+        def save():
+            ids = [facture_id for facture_id, var in selections.items() if var.get()]
+            if not ids:
+                messagebox.showwarning("Validation", "Sélectionnez au moins une facture.", parent=dialog)
+                return
+            try:
+                result = regler_plusieurs_factures(ids, mode.get(), reference.get().strip(), self._current_user())
+            except Exception as exc:
+                messagebox.showerror("Règlement refusé", str(exc), parent=dialog)
+                return
+
+            dialog.destroy()
+            self.refresh()
+            messagebox.showinfo(
+                "Règlement effectué",
+                f"{result['factures']} facture(s) réglée(s).\n\nTotal payé : {result['total']:,.2f} DA",
+                parent=self,
+            )
+
+        buttons = tb.Frame(box)
+        buttons.pack(fill="x", pady=(12, 0))
+        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
+        tb.Button(buttons, text="Régler les factures sélectionnées", bootstyle="success", command=save).pack(side="right")
