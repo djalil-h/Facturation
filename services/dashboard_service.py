@@ -45,9 +45,6 @@ class DashboardService:
                 .all()
             )
 
-            # Dedicated list for the dashboard: overdue first, then upcoming
-            # due dates. This is intentionally separate from "dernieres" so
-            # an old invoice cannot incorrectly appear as an upcoming due item.
             echeances = (
                 session.query(Facture)
                 .options(selectinload(Facture.fournisseur))
@@ -57,6 +54,63 @@ class DashboardService:
                 .limit(10)
                 .all()
             )
+
+            # Main dashboard view: debt grouped by supplier, with every
+            # unpaid/partially-paid invoice kept as plain dictionaries so the
+            # UI never depends on a closed SQLAlchemy session.
+            factures_impayees = (
+                session.query(Facture)
+                .options(selectinload(Facture.fournisseur))
+                .filter(Facture.statut != statut_payee, Facture.reste > 0)
+                .order_by(Fournisseur.nom.asc(), Facture.date_echeance.asc(), Facture.id.asc())
+                .all()
+            )
+
+            dettes_map = {}
+            for facture in factures_impayees:
+                fournisseur = facture.fournisseur
+                fournisseur_id = fournisseur.id if fournisseur else facture.fournisseur_id
+                fournisseur_nom = fournisseur.nom if fournisseur else "Fournisseur non renseigné"
+                key = fournisseur_id or 0
+
+                if key not in dettes_map:
+                    dettes_map[key] = {
+                        "fournisseur_id": fournisseur_id,
+                        "fournisseur_nom": fournisseur_nom,
+                        "nombre_factures": 0,
+                        "montant_total": 0.0,
+                        "montant_paye": 0.0,
+                        "dette": 0.0,
+                        "factures": [],
+                    }
+
+                groupe = dettes_map[key]
+                montant = float(facture.montant or 0)
+                montant_paye_facture = float(facture.montant_paye or 0)
+                reste_facture = max(0.0, float(facture.reste or 0))
+
+                groupe["nombre_factures"] += 1
+                groupe["montant_total"] += montant
+                groupe["montant_paye"] += montant_paye_facture
+                groupe["dette"] += reste_facture
+                groupe["factures"].append({
+                    "id": facture.id,
+                    "numero": facture.numero,
+                    "date_facture": facture.date_facture,
+                    "date_echeance": facture.date_echeance,
+                    "montant": montant,
+                    "montant_paye": montant_paye_facture,
+                    "reste": reste_facture,
+                    "statut": getattr(facture.statut, "value", facture.statut),
+                })
+
+            dettes_fournisseurs = sorted(
+                dettes_map.values(),
+                key=lambda item: (-item["dette"], item["fournisseur_nom"].lower()),
+            )
+
+            nombre_factures_impayees = len(factures_impayees)
+            nombre_fournisseurs_dettes = len(dettes_fournisseurs)
 
             top_fournisseurs = (
                 session.query(
@@ -75,6 +129,10 @@ class DashboardService:
                 notifications.append(f"{retard} facture(s) en retard")
             if echeance:
                 notifications.append(f"{echeance} facture(s) arrivent à échéance sous 7 jours")
+            if nombre_fournisseurs_dettes:
+                notifications.append(
+                    f"{nombre_fournisseurs_dettes} fournisseur(s) ont une dette en cours"
+                )
 
             return {
                 "total_factures": total_factures,
@@ -85,6 +143,9 @@ class DashboardService:
                 "echeance": echeance,
                 "dernieres": dernieres,
                 "echeances": echeances,
+                "dettes_fournisseurs": dettes_fournisseurs,
+                "nombre_factures_impayees": nombre_factures_impayees,
+                "nombre_fournisseurs_dettes": nombre_fournisseurs_dettes,
                 "top_fournisseurs": top_fournisseurs,
                 "notifications": notifications,
             }
