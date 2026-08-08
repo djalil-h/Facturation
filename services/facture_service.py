@@ -52,7 +52,6 @@ def _username(utilisateur):
 
 
 def _credit_impute(facture):
-    """Montant d'avoirs déjà imputé sur une facture, sans le confondre avec les paiements."""
     if _is_avoir(facture):
         return 0.0
     brut_restant = max(0.0, float(facture.montant or 0) - float(facture.montant_paye or 0))
@@ -111,8 +110,7 @@ def supprimer_facture(facture_id, utilisateur=None):
             raise ValueError(f"L'avoir {facture.numero} a déjà été imputé. Il ne peut pas être supprimé.")
         if not _is_avoir(facture) and _credit_impute(facture) > 0.0001:
             raise ValueError(f"La facture {facture.numero} utilise déjà un avoir. Elle ne peut pas être supprimée.")
-        session.add(Historique(facture_id=facture.id, action="Suppression",
-                               details=f"Pièce {facture.numero} supprimée.", utilisateur=_username(utilisateur)))
+        session.add(Historique(facture_id=facture.id, action="Suppression", details=f"Pièce {facture.numero} supprimée.", utilisateur=_username(utilisateur)))
         session.delete(facture)
         session.commit()
         return True
@@ -147,8 +145,7 @@ def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_eche
         if type_piece == "Avoir":
             facture.montant_paye = 0
         _recalculer_statut(facture)
-        session.add(Historique(facture_id=facture.id, action="Modification",
-                               details=f"{type_piece} {numero} modifiée", utilisateur=_username(utilisateur)))
+        session.add(Historique(facture_id=facture.id, action="Modification", details=f"{type_piece} {numero} modifiée", utilisateur=_username(utilisateur)))
         session.commit()
         return True
     except Exception:
@@ -159,15 +156,11 @@ def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_eche
 
 
 def _available_avoirs(session, fournisseur_id):
-    return session.query(Facture).filter(
-        Facture.fournisseur_id == fournisseur_id,
-        Facture.type_piece == "Avoir",
-        Facture.reste < 0,
-    ).order_by(Facture.date_facture.asc(), Facture.id.asc()).all()
+    return session.query(Facture).filter(Facture.fournisseur_id == fournisseur_id, Facture.type_piece == "Avoir", Facture.reste < 0).order_by(Facture.date_facture.asc(), Facture.id.asc()).all()
 
 
-def _imputer_avoirs(session, factures, utilisateur):
-    """Impute les crédits disponibles du fournisseur sur les factures sélectionnées."""
+def _imputer_avoirs(session, factures, utilisateur, avoir_ids=None):
+    """Impute uniquement les avoirs sélectionnés sur les factures sélectionnées."""
     total_impute = 0.0
     details = []
     if not factures:
@@ -176,7 +169,15 @@ def _imputer_avoirs(session, factures, utilisateur):
     if len(fournisseur_ids) != 1:
         raise ValueError("Le règlement groupé doit concerner un seul fournisseur.")
     fournisseur_id = next(iter(fournisseur_ids))
-    avoirs = _available_avoirs(session, fournisseur_id)
+    disponibles = _available_avoirs(session, fournisseur_id)
+    if avoir_ids is None:
+        avoirs = disponibles
+    else:
+        selected = set(avoir_ids)
+        avoirs = [a for a in disponibles if a.id in selected]
+        unknown = selected - {a.id for a in avoirs}
+        if unknown:
+            raise ValueError("Un ou plusieurs avoirs sélectionnés sont introuvables, déjà utilisés ou n'appartiennent pas à ce fournisseur.")
     for facture in factures:
         reste_facture = float(facture.reste or 0)
         if reste_facture <= 0:
@@ -186,23 +187,12 @@ def _imputer_avoirs(session, factures, utilisateur):
             if credit <= 0:
                 continue
             imputation = min(reste_facture, credit)
-            if imputation <= 0:
-                continue
             facture.reste = max(0.0, reste_facture - imputation)
             reste_facture = float(facture.reste)
             avoir.reste = min(0.0, float(avoir.reste) + imputation)
-            if facture.reste == 0:
-                facture.statut = StatutFacture.PAYEE
-            elif facture.montant_paye > 0:
-                facture.statut = StatutFacture.PARTIELLE
-            else:
-                facture.statut = StatutFacture.IMPAYEE
-            session.add(Historique(facture_id=facture.id, action="Imputation avoir",
-                                   details=f"Avoir {avoir.numero} imputé pour {imputation:.2f} DA sur la facture {facture.numero}.",
-                                   utilisateur=_username(utilisateur)))
-            session.add(Historique(facture_id=avoir.id, action="Imputation avoir",
-                                   details=f"{imputation:.2f} DA imputés sur la facture {facture.numero}.",
-                                   utilisateur=_username(utilisateur)))
+            facture.statut = StatutFacture.PAYEE if facture.reste == 0 else (StatutFacture.PARTIELLE if facture.montant_paye > 0 else StatutFacture.IMPAYEE)
+            session.add(Historique(facture_id=facture.id, action="Imputation avoir", details=f"Avoir {avoir.numero} imputé pour {imputation:.2f} DA sur la facture {facture.numero}.", utilisateur=_username(utilisateur)))
+            session.add(Historique(facture_id=avoir.id, action="Imputation avoir", details=f"{imputation:.2f} DA imputés sur la facture {facture.numero}.", utilisateur=_username(utilisateur)))
             total_impute += imputation
             details.append({"avoir": avoir.numero, "facture": facture.numero, "montant": imputation})
             if reste_facture <= 0:
@@ -227,15 +217,12 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
             raise ValueError("Cette facture est déjà entièrement réglée.")
         if montant > reste:
             raise ValueError("Le paiement dépasse le reste à payer.")
-        paiement = Paiement(facture_id=facture.id, montant=montant, date_paiement=date.today(),
-                            mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None),
-                            utilisateur_id=_user_id(utilisateur))
+        paiement = Paiement(facture_id=facture.id, montant=montant, date_paiement=date.today(), mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None), utilisateur_id=_user_id(utilisateur))
         facture.montant_paye += montant
         facture.reste = max(0.0, reste - montant)
         facture.statut = StatutFacture.PAYEE if facture.reste == 0 else StatutFacture.PARTIELLE
         session.add(paiement)
-        session.add(Historique(facture_id=facture.id, action="Paiement",
-                               details=f"Paiement de {montant:.2f} DA", utilisateur=_username(utilisateur)))
+        session.add(Historique(facture_id=facture.id, action="Paiement", details=f"Paiement de {montant:.2f} DA", utilisateur=_username(utilisateur)))
         session.commit()
         return paiement
     except Exception:
@@ -245,9 +232,11 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
         session.close()
 
 
-def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
+def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur, avoir_ids=None):
+    """Règle plusieurs factures et applique uniquement les avoirs cochés."""
     _validate_payment_metadata(mode, reference)
     ids = list(dict.fromkeys(facture_ids or []))
+    avoir_ids = list(dict.fromkeys(avoir_ids or []))
     if not ids:
         raise ValueError("Sélectionnez au moins une facture.")
     session = get_session()
@@ -256,37 +245,33 @@ def regler_plusieurs_factures(facture_ids, mode, reference, utilisateur):
         if len(factures) != len(ids):
             raise ValueError("Une ou plusieurs factures sélectionnées sont introuvables.")
         if any(_is_avoir(f) for f in factures):
-            raise ValueError("Un avoir ne peut pas être inclus dans un règlement.")
+            raise ValueError("Un avoir ne peut pas être inclus parmi les factures à régler.")
         if len({f.fournisseur_id for f in factures}) != 1:
             raise ValueError("Le règlement groupé doit concerner un seul fournisseur.")
         if any(float(f.reste or 0) <= 0 for f in factures):
             raise ValueError("Toutes les factures sélectionnées doivent avoir un reste à payer.")
-
+        fournisseur_id = factures[0].fournisseur_id
+        if avoir_ids:
+            avoirs = session.query(Facture).filter(Facture.id.in_(avoir_ids)).with_for_update().all()
+            if len(avoirs) != len(avoir_ids) or any(not _is_avoir(a) or a.fournisseur_id != fournisseur_id or float(a.reste or 0) >= 0 for a in avoirs):
+                raise ValueError("Un ou plusieurs avoirs sélectionnés sont invalides pour ce fournisseur.")
         total_avant_avoir = sum(float(f.reste or 0) for f in factures)
-        total_impute, imputation_details = _imputer_avoirs(session, factures, utilisateur)
+        total_impute, imputation_details = _imputer_avoirs(session, factures, utilisateur, avoir_ids=avoir_ids)
         paiements, total = [], 0.0
         for facture in factures:
             reste = float(facture.reste or 0)
             if reste <= 0:
                 continue
-            paiement = Paiement(facture_id=facture.id, montant=reste, date_paiement=date.today(),
-                                mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None),
-                                utilisateur_id=_user_id(utilisateur))
+            paiement = Paiement(facture_id=facture.id, montant=reste, date_paiement=date.today(), mode_paiement=str(mode).strip(), reference=(str(reference).strip() if reference else None), utilisateur_id=_user_id(utilisateur))
             facture.montant_paye += reste
             facture.reste = 0.0
             facture.statut = StatutFacture.PAYEE
             session.add(paiement)
-            session.add(Historique(facture_id=facture.id, action="Paiement groupé",
-                                   details=f"Facture {facture.numero} réglée après imputation d'avoir : {reste:.2f} DA",
-                                   utilisateur=_username(utilisateur)))
+            session.add(Historique(facture_id=facture.id, action="Paiement groupé", details=f"Facture {facture.numero} réglée après imputation d'avoir : {reste:.2f} DA", utilisateur=_username(utilisateur)))
             paiements.append(paiement)
             total += reste
         session.commit()
-        return {
-            "factures": len(factures), "paiements": paiements, "total": total,
-            "total_avant_avoir": total_avant_avoir, "avoir_impute": total_impute,
-            "imputations": imputation_details,
-        }
+        return {"factures": len(factures), "paiements": paiements, "total": total, "total_avant_avoir": total_avant_avoir, "avoir_impute": total_impute, "imputations": imputation_details}
     except Exception:
         session.rollback()
         raise
