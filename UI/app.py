@@ -1,3 +1,4 @@
+import tkinter as tk
 import ttkbootstrap as tb
 
 from UI.sidebar import Sidebar
@@ -21,6 +22,8 @@ class FacturationApp(tb.Window):
         self.content = None
         self.topbar = None
         self.sidebar = None
+        self.bind("<F11>", lambda _e: self.toggle_fullscreen())
+        self.bind("<Escape>", lambda _e: self.exit_fullscreen())
         self.show_login()
 
     def toggle_fullscreen(self):
@@ -49,7 +52,7 @@ class FacturationApp(tb.Window):
         self.show_dashboard()
 
     def create_layout(self):
-        self.columnconfigure(0, weight=0, minsize=220)
+        self.columnconfigure(0, weight=0, minsize=210)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -67,7 +70,7 @@ class FacturationApp(tb.Window):
         self.topbar.refresh_user(self.current_user)
 
         self.content = tb.Frame(self.main_container, bootstyle="light")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=18, pady=(4, 18))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 14))
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
 
