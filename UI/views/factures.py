@@ -7,7 +7,7 @@ from UI.base_view import BaseView
 from UI.widgets.modern_table import ModernTable
 from services.facture_service import ajouter_facture, liste_factures, modifier_facture, supprimer_facture, ajouter_paiement, liste_paiements, rechercher_factures
 from services.fournisseur_service import liste_fournisseurs
-from services.import_service import importer_factures_excel
+from services.import_service import analyser_factures_excel, importer_factures_excel
 from services.export_service import exporter_factures_excel, creer_modele_factures_excel
 
 
@@ -122,20 +122,90 @@ class FacturesView(BaseView):
         path = filedialog.askopenfilename(title="Choisir le fichier Excel", filetypes=[("Fichiers Excel", "*.xlsx")])
         if not path:
             return
-        if not messagebox.askyesno("Importer les anciennes factures", "Les pièces existantes portant le même numéro seront ignorées.\nLes fournisseurs absents seront créés automatiquement.\n\nContinuer ?"):
-            return
         try:
-            result = importer_factures_excel(path, self._current_user(), creer_fournisseurs=True)
+            preview = analyser_factures_excel(path)
         except Exception as exc:
-            messagebox.showerror("Import Excel", f"Import impossible.\n\n{exc}")
+            messagebox.showerror("Analyse Excel", f"Impossible d'analyser le fichier.\n\n{exc}")
             return
-        self.refresh()
-        message = f"Import terminé.\n\nFactures importées : {result['imported']}\nDoublons ignorés : {result['skipped']}\nFournisseurs créés : {result['suppliers_created']}\nPaiements historiques : {result['payments_created']}"
-        if result["errors"]:
-            message += "\n\nDétails :\n" + "\n".join(result["errors"][:15])
-            if len(result["errors"]) > 15:
-                message += f"\n... et {len(result['errors']) - 15} autre(s)."
-        messagebox.showinfo("Import Excel", message)
+
+        preview_window = tb.Toplevel(self)
+        preview_window.title(f"Aperçu avant import — {preview['filename']}")
+        preview_window.geometry("900x650")
+        preview_window.minsize(760, 520)
+        preview_window.transient(self.winfo_toplevel())
+        preview_window.grab_set()
+
+        outer = tb.Frame(preview_window, padding=18)
+        outer.pack(fill="both", expand=True)
+        tb.Label(outer, text="Aperçu avant import", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        tb.Label(outer, text=preview["filename"], bootstyle="secondary").pack(anchor="w", pady=(0, 12))
+
+        summary = tb.Frame(outer)
+        summary.pack(fill="x", pady=(0, 12))
+        cards = [
+            ("À importer", preview["to_import"], "success"),
+            ("Factures", preview["factures"], "primary"),
+            ("Avoirs", preview["avoirs"], "warning"),
+            ("Doublons", preview["duplicates"], "secondary"),
+        ]
+        for title, value, style in cards:
+            card = tb.Frame(summary, padding=(12, 8), bootstyle=style)
+            card.pack(side="left", fill="x", expand=True, padx=3)
+            tb.Label(card, text=str(value), font=("Segoe UI", 18, "bold"), bootstyle=f"{style}-inverse").pack()
+            tb.Label(card, text=title, font=("Segoe UI", 8), bootstyle=f"{style}-inverse").pack()
+
+        net = preview["total_factures"] - preview["total_avoirs"]
+        tb.Label(outer, text=f"Total factures : {preview['total_factures']:,.2f} DA    •    Total avoirs : {preview['total_avoirs']:,.2f} DA    •    Dette nette importée : {net:,.2f} DA", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        suppliers = ", ".join(preview["suppliers"][:12])
+        if len(preview["suppliers"]) > 12:
+            suppliers += f" … (+{len(preview['suppliers']) - 12})"
+        tb.Label(outer, text=f"Fournisseurs détectés : {suppliers or 'aucun'}", bootstyle="secondary").pack(anchor="w", pady=(0, 8))
+
+        details = tb.Frame(outer)
+        details.pack(fill="both", expand=True)
+        text = tk.Text(details, wrap="word", height=12, font=("Consolas", 9))
+        scroll = tb.Scrollbar(details, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scroll.set)
+        text.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        for row in preview["rows"][:250]:
+            sign = "AVOIR" if row["type_piece"] == "Avoir" else "FACTURE"
+            text.insert("end", f"[{row['status']:<14}] {sign:<8} {row['numero']:<18} {row['fournisseur']:<25} {row['montant']:>14,.2f} DA  | {row['sheet']}:{row['excel_row']}\n")
+        if len(preview["rows"]) > 250:
+            text.insert("end", f"\n… {len(preview['rows']) - 250} lignes supplémentaires non affichées.\n")
+        if preview["errors"]:
+            text.insert("end", "\nANOMALIES À VÉRIFIER :\n")
+            for error in preview["errors"][:30]:
+                text.insert("end", f"• {error}\n")
+            if len(preview["errors"]) > 30:
+                text.insert("end", f"… et {len(preview['errors']) - 30} autre(s).\n")
+        text.configure(state="disabled")
+
+        buttons = tb.Frame(outer)
+        buttons.pack(fill="x", pady=(12, 0))
+        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=preview_window.destroy, padding=(12, 7)).pack(side="right", padx=4)
+
+        def confirm_import():
+            if preview["to_import"] == 0:
+                messagebox.showwarning("Import", "Aucune nouvelle pièce à importer.", parent=preview_window)
+                return
+            if not messagebox.askyesno("Confirmer l'import", f"Importer {preview['to_import']} pièce(s) dans la base officielle ?\n\nLes doublons seront ignorés et les fournisseurs absents seront créés.", parent=preview_window):
+                return
+            try:
+                result = importer_factures_excel(path, self._current_user(), creer_fournisseurs=True)
+            except Exception as exc:
+                messagebox.showerror("Import Excel", f"Import impossible.\n\n{exc}", parent=preview_window)
+                return
+            preview_window.destroy()
+            self.refresh()
+            message = f"Import terminé.\n\nPièces importées : {result['imported']}\nFactures : {result['factures']}\nAvoirs : {result['avoirs']}\nDoublons ignorés : {result['skipped']}\nFournisseurs créés : {result['suppliers_created']}"
+            if result["payments_created"]:
+                message += f"\nPaiements historiques : {result['payments_created']}"
+            if result["errors"]:
+                message += "\n\nAnomalies :\n" + "\n".join(result["errors"][:15])
+            messagebox.showinfo("Import Excel", message)
+
+        tb.Button(buttons, text=f"✓ Importer {preview['to_import']} pièce(s)", bootstyle="success", command=confirm_import, padding=(12, 7)).pack(side="right", padx=4)
 
     def _selected(self):
         values = self.table.get_selected()
