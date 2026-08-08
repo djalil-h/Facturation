@@ -1,5 +1,7 @@
 from datetime import date
 
+from sqlalchemy.orm import selectinload
+
 from database.db import get_session
 from database.models import (
     Facture,
@@ -31,15 +33,7 @@ def _username(utilisateur):
     return getattr(utilisateur, "username", "Invité")
 
 
-def ajouter_facture(
-    numero,
-    fournisseur_id,
-    date_facture,
-    date_echeance,
-    montant,
-    commentaire,
-    utilisateur,
-):
+def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur):
     session = get_session()
     try:
         existe = session.query(Facture).filter_by(numero=numero).first()
@@ -60,17 +54,17 @@ def ajouter_facture(
         )
         session.add(facture)
         session.flush()
-
-        session.add(
-            Historique(
-                facture_id=facture.id,
-                action="Création",
-                details=f"Facture {numero} créée.",
-                utilisateur=_username(utilisateur),
-            )
-        )
+        session.add(Historique(
+            facture_id=facture.id,
+            action="Création",
+            details=f"Facture {numero} créée.",
+            utilisateur=_username(utilisateur),
+        ))
         session.commit()
         session.refresh(facture)
+        # The caller receives the ORM object after the session is closed.
+        # Eagerly load the supplier so UI code can safely read facture.fournisseur.
+        facture.fournisseur
         return facture
     except Exception:
         session.rollback()
@@ -82,7 +76,12 @@ def ajouter_facture(
 def liste_factures():
     session = get_session()
     try:
-        return session.query(Facture).order_by(Facture.date_facture.desc()).all()
+        return (
+            session.query(Facture)
+            .options(selectinload(Facture.fournisseur))
+            .order_by(Facture.date_facture.desc())
+            .all()
+        )
     finally:
         session.close()
 
@@ -103,16 +102,7 @@ def supprimer_facture(facture_id):
         session.close()
 
 
-def modifier_facture(
-    facture_id,
-    fournisseur_id,
-    numero,
-    date_facture,
-    date_echeance,
-    montant,
-    commentaire,
-    utilisateur,
-):
+def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_echeance, montant, commentaire, utilisateur):
     session = get_session()
     try:
         facture = session.get(Facture, facture_id)
@@ -134,15 +124,12 @@ def modifier_facture(
         facture.commentaire = commentaire
         facture.montant = montant
         _recalculer_statut(facture)
-
-        session.add(
-            Historique(
-                facture_id=facture.id,
-                action="Modification",
-                details=f"Facture {numero} modifiée",
-                utilisateur=_username(utilisateur),
-            )
-        )
+        session.add(Historique(
+            facture_id=facture.id,
+            action="Modification",
+            details=f"Facture {numero} modifiée",
+            utilisateur=_username(utilisateur),
+        ))
         session.commit()
         return True
     except Exception:
@@ -158,10 +145,8 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
         facture = session.get(Facture, facture_id)
         if facture is None:
             raise ValueError("Facture introuvable.")
-
         if montant <= 0:
             raise ValueError("Montant invalide.")
-
         if montant > facture.reste:
             raise ValueError("Le paiement dépasse le reste à payer.")
 
@@ -173,19 +158,15 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
             reference=reference,
             utilisateur_id=_user_id(utilisateur),
         )
-
         facture.montant_paye += montant
         _recalculer_statut(facture)
-
         session.add(paiement)
-        session.add(
-            Historique(
-                facture_id=facture.id,
-                action="Paiement",
-                details=f"Paiement de {montant:.2f} DA",
-                utilisateur=_username(utilisateur),
-            )
-        )
+        session.add(Historique(
+            facture_id=facture.id,
+            action="Paiement",
+            details=f"Paiement de {montant:.2f} DA",
+            utilisateur=_username(utilisateur),
+        ))
         session.commit()
         return paiement
     except Exception:
@@ -208,19 +189,12 @@ def liste_paiements(facture_id):
         session.close()
 
 
-def rechercher_factures(
-    fournisseur_id=None,
-    statut=None,
-    date_debut=None,
-    date_fin=None,
-):
+def rechercher_factures(fournisseur_id=None, statut=None, date_debut=None, date_fin=None):
     session = get_session()
     try:
-        query = session.query(Facture)
-
+        query = session.query(Facture).options(selectinload(Facture.fournisseur))
         if fournisseur_id:
             query = query.filter(Facture.fournisseur_id == fournisseur_id)
-
         if statut:
             if isinstance(statut, str):
                 try:
@@ -231,13 +205,10 @@ def rechercher_factures(
                     except KeyError:
                         return []
             query = query.filter(Facture.statut == statut)
-
         if date_debut:
             query = query.filter(Facture.date_facture >= date_debut)
-
         if date_fin:
             query = query.filter(Facture.date_facture <= date_fin)
-
         return query.order_by(Facture.date_facture.desc()).all()
     finally:
         session.close()
