@@ -25,6 +25,15 @@ def _recalculer_statut(facture):
         facture.statut = StatutFacture.IMPAYEE
 
 
+def _validate_invoice_dates_and_amount(date_facture, date_echeance, montant):
+    if montant is None or montant < 0:
+        raise ValueError("Le montant doit être supérieur ou égal à zéro.")
+    if date_facture is None or date_echeance is None:
+        raise ValueError("Les dates de facture et d'échéance sont obligatoires.")
+    if date_echeance < date_facture:
+        raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
+
+
 def _user_id(utilisateur):
     return getattr(utilisateur, "id", None)
 
@@ -34,6 +43,7 @@ def _username(utilisateur):
 
 
 def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant, commentaire, utilisateur):
+    _validate_invoice_dates_and_amount(date_facture, date_echeance, montant)
     session = get_session()
     try:
         existe = session.query(Facture).filter_by(numero=numero).first()
@@ -62,8 +72,6 @@ def ajouter_facture(numero, fournisseur_id, date_facture, date_echeance, montant
         ))
         session.commit()
         session.refresh(facture)
-        # The caller receives the ORM object after the session is closed.
-        # Eagerly load the supplier so UI code can safely read facture.fournisseur.
         facture.fournisseur
         return facture
     except Exception:
@@ -103,11 +111,17 @@ def supprimer_facture(facture_id):
 
 
 def modifier_facture(facture_id, fournisseur_id, numero, date_facture, date_echeance, montant, commentaire, utilisateur):
+    _validate_invoice_dates_and_amount(date_facture, date_echeance, montant)
     session = get_session()
     try:
         facture = session.get(Facture, facture_id)
         if facture is None:
             return False
+
+        if montant < (facture.montant_paye or 0):
+            raise ValueError(
+                f"Le nouveau montant ({montant:.2f} DA) ne peut pas être inférieur au montant déjà payé ({facture.montant_paye:.2f} DA)."
+            )
 
         duplicate = (
             session.query(Facture)
@@ -146,7 +160,7 @@ def ajouter_paiement(facture_id, montant, mode, reference, utilisateur):
         if facture is None:
             raise ValueError("Facture introuvable.")
         if montant <= 0:
-            raise ValueError("Montant invalide.")
+            raise ValueError("Le montant du paiement doit être supérieur à zéro.")
         if montant > facture.reste:
             raise ValueError("Le paiement dépasse le reste à payer.")
 
