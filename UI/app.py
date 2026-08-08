@@ -2,6 +2,7 @@ import ttkbootstrap as tb
 
 from UI.sidebar import Sidebar
 from UI.topbar import TopBar
+from UI.views.login import LoginView
 
 
 class FacturationApp(tb.Window):
@@ -9,17 +10,32 @@ class FacturationApp(tb.Window):
 
     def __init__(self):
         super().__init__(themename="flatly")
-
         self.title("Facturation - Pharmacie Hamzaoui Hamid")
         self.geometry("1550x900")
         self.minsize(1200, 750)
         self.configure(bg="#F5F7FA")
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
-
         self.current_user = None
         self.current_view = None
+        self.main_container = None
+        self.content = None
+        self.topbar = None
+        self.sidebar = None
+        self.show_login()
 
+    def clear_root(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+    def show_login(self):
+        self.clear_root()
+        self.current_view = None
+        login_view = LoginView(self, self)
+        login_view.pack(fill="both", expand=True)
+
+    def show_main_layout(self):
+        self.clear_root()
         self.create_layout()
+        self.show_dashboard()
 
     def create_layout(self):
         self.columnconfigure(0, weight=0)
@@ -36,13 +52,12 @@ class FacturationApp(tb.Window):
 
         self.topbar = TopBar(self.main_container, self)
         self.topbar.grid(row=0, column=0, sticky="ew")
+        self.topbar.refresh_user(self.current_user)
 
         self.content = tb.Frame(self.main_container, bootstyle="light")
         self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
-
-        self.show_dashboard()
 
     def clear_content(self):
         for widget in self.content.winfo_children():
@@ -90,8 +105,10 @@ class FacturationApp(tb.Window):
 
     def set_current_user(self, user):
         self.current_user = user
-        self.topbar.refresh_user(user)
-        self.sidebar.set_user(user.username if user else None)
+        if self.topbar:
+            self.topbar.refresh_user(user)
+        if self.sidebar:
+            self.sidebar.set_user(user.username if user else None)
 
     def get_current_user(self):
         return self.current_user
@@ -104,8 +121,8 @@ class FacturationApp(tb.Window):
         self.title(f"Facturation - Pharmacie Hamzaoui Hamid | {titre}")
 
     def logout(self):
-        self.set_current_user(None)
-        self.show_dashboard()
+        self.current_user = None
+        self.show_login()
 
     def on_close(self):
         self.destroy()
