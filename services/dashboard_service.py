@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from database.db import get_session
 from database.models import Facture, Fournisseur, StatutFacture
@@ -12,35 +13,19 @@ class DashboardService:
     @staticmethod
     def get_dashboard_data():
         session = get_session()
-
         try:
             total_factures = session.query(Facture).count()
-
-            montant_total = (
-                session.query(func.coalesce(func.sum(Facture.montant), 0))
-                .scalar()
-                or 0
-            )
-
-            montant_paye = (
-                session.query(func.coalesce(func.sum(Facture.montant_paye), 0))
-                .scalar()
-                or 0
-            )
-
+            montant_total = session.query(func.coalesce(func.sum(Facture.montant), 0)).scalar() or 0
+            montant_paye = session.query(func.coalesce(func.sum(Facture.montant_paye), 0)).scalar() or 0
             reste = max(0, montant_total - montant_paye)
             aujourd_hui = date.today()
             statut_payee = StatutFacture.PAYEE
 
             retard = (
                 session.query(Facture)
-                .filter(
-                    Facture.statut != statut_payee,
-                    Facture.date_echeance < aujourd_hui,
-                )
+                .filter(Facture.statut != statut_payee, Facture.date_echeance < aujourd_hui)
                 .count()
             )
-
             echeance = (
                 session.query(Facture)
                 .filter(
@@ -51,8 +36,12 @@ class DashboardService:
                 .count()
             )
 
+            # The dashboard returns ORM invoices after this session is closed.
+            # Eager loading prevents DetachedInstanceError when the view reads
+            # facture.fournisseur.nom outside the session.
             dernieres = (
                 session.query(Facture)
+                .options(selectinload(Facture.fournisseur))
                 .order_by(Facture.id.desc())
                 .limit(10)
                 .all()
