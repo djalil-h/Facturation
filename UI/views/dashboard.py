@@ -21,19 +21,20 @@ class Dashboard(BaseView):
         self.refresh_dashboard()
 
     def build(self):
-        # Le parent (UI.app.show_view) gère déjà le placement du Dashboard
-        # avec grid(). Ne jamais pack() ce widget ici.
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        # BaseView utilise déjà pack() pour le titre et self.body.
+        # On utilise donc grid() uniquement DANS self.body.
+        root = self.body
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(2, weight=1)
 
-        header = tb.Frame(self)
+        header = tb.Frame(root)
         header.grid(row=0, column=0, sticky="ew", padx=4, pady=(2, 8))
         header.columnconfigure(0, weight=1)
         tb.Label(header, text="Situation financière", font=("Segoe UI", 17, "bold")).grid(row=0, column=0, sticky="w")
         tb.Label(header, text="Priorité : fournisseurs à régler", bootstyle="secondary").grid(row=1, column=0, sticky="w")
         tb.Button(header, text="↻ Actualiser", bootstyle="secondary-outline", command=self.refresh_dashboard, padding=(10, 6)).grid(row=0, column=1, rowspan=2, sticky="e")
 
-        cards = tb.Frame(self)
+        cards = tb.Frame(root)
         cards.grid(row=1, column=0, sticky="ew", padx=4, pady=(0, 10))
         for i in range(4):
             cards.columnconfigure(i, weight=1)
@@ -46,19 +47,20 @@ class Dashboard(BaseView):
         self.card_retard = StatCard(cards, "En retard", "0", "!", "danger")
         self.card_retard.grid(row=0, column=3, padx=(5, 0), sticky="ew")
 
-        body = tb.Frame(self)
-        body.grid(row=2, column=0, sticky="nsew", padx=4)
-        body.columnconfigure(0, weight=3)
-        body.columnconfigure(1, weight=1, minsize=260)
-        body.rowconfigure(1, weight=1)
+        content = tb.Frame(root)
+        content.grid(row=2, column=0, sticky="nsew", padx=4)
+        content.columnconfigure(0, weight=3)
+        content.columnconfigure(1, weight=1, minsize=260)
+        content.rowconfigure(1, weight=1)
 
-        self.search = SearchBar(body, command=self.search_supplier)
+        self.search = SearchBar(content, command=self.search_supplier)
         self.search.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
 
-        left = tb.Frame(body)
+        left = tb.Frame(content)
         left.grid(row=1, column=0, sticky="nsew", padx=(0, 9))
         left.columnconfigure(0, weight=1)
         left.rowconfigure(1, weight=1)
+
         title = tb.Frame(left)
         title.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         tb.Label(title, text="Fournisseurs à régler", font=("Segoe UI", 14, "bold")).pack(side=LEFT)
@@ -80,8 +82,9 @@ class Dashboard(BaseView):
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.window, width=e.width))
         self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(int(-e.delta / 120), "units"), add="+")
 
-        right = tb.Frame(body)
+        right = tb.Frame(content)
         right.grid(row=1, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
         alerts = tb.Labelframe(right, text="  🔔 Alertes  ", padding=10)
         alerts.grid(row=0, column=0, sticky="ew", pady=(0, 8))
@@ -100,8 +103,6 @@ class Dashboard(BaseView):
             self.refresh_alerts()
             self.refresh_due()
         except Exception as exc:
-            # Le Dashboard doit rester visible même si une donnée secondaire
-            # échoue à être chargée.
             print("Erreur Dashboard :", exc)
 
     def refresh_cards(self):
