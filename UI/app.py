@@ -12,8 +12,8 @@ class FacturationApp(tb.Window):
         super().__init__(themename="flatly")
         self.title("Facturation - Pharmacie Hamzaoui Hamid")
         self.geometry("1550x900")
-        self.minsize(1200, 750)
-        self.configure(bg="#F5F7FA")
+        self.minsize(1000, 650)
+        self.configure(bg="#f4f6f8")
         self.current_user = None
         self.current_view = None
         self.main_container = None
@@ -42,14 +42,12 @@ class FacturationApp(tb.Window):
         self.show_dashboard()
 
     def create_layout(self):
-        self.columnconfigure(0, weight=0)
+        self.columnconfigure(0, weight=0, minsize=245)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
         self.sidebar = Sidebar(self)
-        self.sidebar.grid(row=0, column=0, sticky="ns")
-        # set_current_user() est appelé avant la création de la Sidebar pendant
-        # la connexion ; il faut donc synchroniser l'utilisateur ici aussi.
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.set_user(self.current_user.username if self.current_user else None)
 
         self.main_container = tb.Frame(self, bootstyle="light")
@@ -62,7 +60,7 @@ class FacturationApp(tb.Window):
         self.topbar.refresh_user(self.current_user)
 
         self.content = tb.Frame(self.main_container, bootstyle="light")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=20)
+        self.content.grid(row=1, column=0, sticky="nsew", padx=24, pady=(8, 24))
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(0, weight=1)
 
