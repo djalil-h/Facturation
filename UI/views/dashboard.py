@@ -107,6 +107,13 @@ class Dashboard(BaseView):
             self.refresh_suppliers()
             self.refresh_alerts()
             self.refresh_due()
+            # Synchronise immédiatement le badge du centre de notifications
+            # après chaque actualisation du Dashboard.
+            root = self.winfo_toplevel()
+            topbar = getattr(root, "topbar", None)
+            if topbar is not None and topbar.winfo_exists() and hasattr(topbar, "set_notification_count"):
+                count = int(self.data.get("retard", 0) or 0) + int(self.data.get("echeance", 0) or 0)
+                topbar.set_notification_count(count)
         except Exception as exc:
             print("Erreur Dashboard :", exc)
 
