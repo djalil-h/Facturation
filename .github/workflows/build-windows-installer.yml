@@ -28,6 +28,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller pillow
 
+      - name: Install ImageMagick
+        shell: pwsh
+        run: |
+          choco install imagemagick.app --no-progress -y
+          $env:Path += ";C:\Program Files\ImageMagick-*"
+          $magick = Get-Command magick.exe -ErrorAction SilentlyContinue
+          if (-not $magick) { throw "ImageMagick was not found after installation." }
+          magick --version
+
       - name: Create Windows icon from Hamzaoui SVG
         shell: pwsh
         run: |
