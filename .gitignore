@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -10,7 +11,20 @@ env/
 
 # IDE
 .vscode/
+.idea/
 
 # Fichiers temporaires
 *.log
 *.tmp
+*.bak
+*.swp
+
+# Données générées localement
+backups/
+exports/
+logs/
+
+# Fichiers temporaires SQLite
+*.db-wal
+*.db-shm
+*.db-journal
