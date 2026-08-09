@@ -5,6 +5,7 @@ from UI.sidebar import Sidebar
 from UI.topbar import TopBar
 from UI.views.login import LoginView
 from UI.theme import apply_theme, BG
+from config import APP_NAME, PHARMACY_NAME, ICON_FILE
 
 
 class FacturationApp(tb.Window):
@@ -13,11 +14,21 @@ class FacturationApp(tb.Window):
     def __init__(self):
         super().__init__(themename="flatly")
         apply_theme(self)
-        self.title("Facturation - Pharmacie Hamzaoui Hamid")
+        self.title(f"{APP_NAME} - {PHARMACY_NAME}")
         self.geometry("1280x760")
         self.minsize(1050, 650)
         self.resizable(True, True)
         self.configure(bg=BG)
+
+        # Icône Windows / barre de titre. Le fichier est embarqué par PyInstaller.
+        try:
+            if ICON_FILE.exists():
+                self.iconbitmap(default=str(ICON_FILE))
+        except Exception:
+            # L'application doit rester démarrable même si le gestionnaire de
+            # fenêtres ne supporte pas le format d'icône sur un environnement donné.
+            pass
+
         self.current_user = None
         self.current_view = None
         self.main_container = None
@@ -138,7 +149,7 @@ class FacturationApp(tb.Window):
             self.current_view.refresh()
 
     def set_title(self, titre):
-        self.title(f"Facturation - Pharmacie Hamzaoui Hamid | {titre}")
+        self.title(f"{APP_NAME} - {PHARMACY_NAME} | {titre}")
 
     def logout(self):
         self.current_user = None
