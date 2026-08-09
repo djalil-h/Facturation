@@ -46,7 +46,7 @@ jobs:
       - name: Build application
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --onedir --name HamzaouiFacturation --icon assets/hamzaoui_logo.ico --add-data "assets;assets" main.py
+          pyinstaller --noconfirm --clean --windowed --onedir --name HamzaouiFacturation --icon assets/hamzaoui_logo.ico --add-data "assets;assets" --collect-all ttkbootstrap main.py
 
       - name: Install Inno Setup
         shell: pwsh
