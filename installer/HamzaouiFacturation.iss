@@ -24,11 +24,11 @@ SetupIconFile=..\assets\hamzaoui_logo.ico
 Source="..\dist\HamzaouiFacturation\*"; DestDir="{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name="{autodesktop}\Hamzaoui Facturation"; Filename="{app}\{#MyAppExeName}"; WorkingDir="{app}"
-Name="{group}\Hamzaoui Facturation"; Filename="{app}\{#MyAppExeName}"; WorkingDir="{app}"
+Name: "{autodesktop}\Hamzaoui Facturation"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{group}\Hamzaoui Facturation"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 
 [Run]
-Filename="{app}\{#MyAppExeName}"; Description="Lancer Hamzaoui Facturation"; Flags=nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Lancer Hamzaoui Facturation"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\assets"
