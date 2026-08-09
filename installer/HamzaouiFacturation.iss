@@ -21,7 +21,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\hamzaoui_logo.ico
 
 [Files]
-Source="..\dist\HamzaouiFacturation\*"; DestDir="{app}"; Flags: recursesubdirs ignoreversion
+Source: "..\dist\HamzaouiFacturation\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Hamzaoui Facturation"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
