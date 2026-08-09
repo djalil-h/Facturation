@@ -1,0 +1,55 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller pillow cairosvg
+
+      - name: Create Windows icon from Hamzaoui SVG
+        shell: pwsh
+        run: |
+          python -c "import cairosvg; cairosvg.svg2png(url='assets/hamzaoui_logo.svg', write_to='assets/hamzaoui_logo.png', output_width=512, output_height=512)"
+          python -c "from PIL import Image; im=Image.open('assets/hamzaoui_logo.png').convert('RGBA'); im.save('assets/hamzaoui_logo.ico', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+
+      - name: Build application
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --onedir --name HamzaouiFacturation --icon assets/hamzaoui_logo.ico --add-data "assets;assets" main.py
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installer\output | Out-Null
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\HamzaouiFacturation.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hamzaoui-Facturation-Installer
+          path: installer/output/Hamzaoui-Facturation-Setup-v1.0.0.exe
+          if-no-files-found: error
