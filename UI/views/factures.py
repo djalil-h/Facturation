@@ -40,39 +40,80 @@ class FacturesView(BaseView):
         except (TypeError, ValueError):
             return "0,00 DA"
 
+    @staticmethod
+    def _parse_amount(value, field_name):
+        raw = str(value or "").strip().replace("DA", "").replace(" ", "")
+        if not raw:
+            return None
+        if "," in raw:
+            raw = raw.replace(".", "").replace(",", ".")
+        try:
+            amount = float(raw)
+        except ValueError:
+            raise ValueError(f"{field_name} doit être un montant valide.")
+        if amount < 0:
+            raise ValueError(f"{field_name} ne peut pas être négatif.")
+        return amount
+
     def _build(self):
         header = tb.Frame(self.body)
         header.pack(fill="x", pady=(0, 12))
         title_box = tb.Frame(header)
         title_box.pack(side="left", fill="x", expand=True)
-        tb.Label(title_box, text="Factures & avoirs", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        tb.Label(title_box, text="Consultez, importez et gérez les pièces fournisseurs", bootstyle="secondary").pack(anchor="w", pady=(1, 0))
+        tb.Label(title_box, text="Factures & avoirs", font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        tb.Label(title_box, text="Consultez, importez et gérez les pièces fournisseurs", font=("Segoe UI", 11), bootstyle="secondary").pack(anchor="w", pady=(3, 0))
 
         actions = tb.Frame(header)
         actions.pack(side="right")
         for text, style, command in [
-            ("⬇  Exporter", "success-outline", self.export_excel),
+            ("⬇  Exporter", "primary-outline", self.export_excel),
             ("📄  Modèle", "secondary-outline", self.export_template),
             ("⬆  Importer", "info-outline", self.import_excel),
-            ("＋  Nouvelle pièce", "success", self.open_add_dialog),
+            ("＋  Nouvelle pièce", "primary", self.open_add_dialog),
         ]:
-            tb.Button(actions, text=text, bootstyle=style, command=command, padding=(10, 7)).pack(side="left", padx=3)
+            tb.Button(actions, text=text, bootstyle=style, command=command, padding=(12, 9)).pack(side="left", padx=4)
 
-        toolbar = tb.Frame(self.body, padding=(10, 9))
+        toolbar = tb.Frame(self.body, padding=(12, 11))
         toolbar.pack(fill="x", pady=(0, 10))
         toolbar.columnconfigure(0, weight=1)
+
         search_box = tb.Frame(toolbar)
-        search_box.grid(row=0, column=0, sticky="ew")
+        search_box.grid(row=0, column=0, columnspan=5, sticky="ew", pady=(0, 9))
+        search_box.columnconfigure(1, weight=1)
+        tb.Label(search_box, text="Rechercher", font=("Segoe UI", 11, "bold")).grid(row=0, column=0, padx=(0, 10), sticky="w")
         self.search_var = tk.StringVar()
-        tb.Label(search_box, text="🔎", font=("Segoe UI", 11)).pack(side="left", padx=(0, 5))
-        tb.Entry(search_box, textvariable=self.search_var).pack(side="left", fill="x", expand=True, ipady=4)
-        tb.Label(search_box, text="  Numéro / fournisseur", bootstyle="secondary").pack(side="left", padx=8)
+        tb.Entry(search_box, textvariable=self.search_var, font=("Segoe UI", 11)).grid(row=0, column=1, sticky="ew", ipady=4)
+        tb.Label(search_box, text="Numéro ou fournisseur", font=("Segoe UI", 10), bootstyle="secondary").grid(row=0, column=2, padx=(10, 0), sticky="e")
+
+        amount_box = tb.Frame(toolbar)
+        amount_box.grid(row=1, column=0, columnspan=5, sticky="ew")
+        tb.Label(amount_box, text="Recherche par montant", font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 10))
+
+        self.amount_exact_var = tk.StringVar()
+        self.amount_min_var = tk.StringVar()
+        self.amount_max_var = tk.StringVar()
+
+        tb.Label(amount_box, text="Exact", font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
+        tb.Entry(amount_box, textvariable=self.amount_exact_var, width=15, font=("Segoe UI", 11)).pack(side="left", ipady=3)
+        tb.Label(amount_box, text="DA", font=("Segoe UI", 10, "bold")).pack(side="left", padx=(4, 14))
+        tb.Label(amount_box, text="Minimum", font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
+        tb.Entry(amount_box, textvariable=self.amount_min_var, width=15, font=("Segoe UI", 11)).pack(side="left", ipady=3)
+        tb.Label(amount_box, text="DA", font=("Segoe UI", 10, "bold")).pack(side="left", padx=(4, 14))
+        tb.Label(amount_box, text="Maximum", font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
+        tb.Entry(amount_box, textvariable=self.amount_max_var, width=15, font=("Segoe UI", 11)).pack(side="left", ipady=3)
+        tb.Label(amount_box, text="DA", font=("Segoe UI", 10, "bold")).pack(side="left", padx=(4, 14))
+
         self.status_var = tk.StringVar(value="Tous les statuts")
-        self.status_combo = tb.Combobox(toolbar, textvariable=self.status_var, state="readonly", width=22, values=["Tous les statuts", "Impayée", "Partiellement payée", "Payée"])
-        self.status_combo.grid(row=0, column=1, padx=10)
+        self.status_combo = tb.Combobox(amount_box, textvariable=self.status_var, state="readonly", width=22, values=["Tous les statuts", "Impayée", "Partiellement payée", "Payée"], font=("Segoe UI", 11))
+        self.status_combo.pack(side="left", padx=(0, 8))
         self.status_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        tb.Button(amount_box, text="↻  Actualiser", bootstyle="secondary-outline", command=self.refresh, padding=(12, 9)).pack(side="left")
+
         self.search_var.trace_add("write", lambda *_: self.refresh())
-        tb.Button(toolbar, text="↻  Actualiser", bootstyle="secondary-outline", command=self.refresh, padding=(10, 6)).grid(row=0, column=2)
+        self.amount_exact_var.trace_add("write", lambda *_: self.refresh())
+        self.amount_min_var.trace_add("write", lambda *_: self.refresh())
+        self.amount_max_var.trace_add("write", lambda *_: self.refresh())
+        tb.Label(toolbar, text="Montant exact, minimum ou maximum. Vous pouvez remplir un seul champ ou plusieurs.", font=("Segoe UI", 10), bootstyle="secondary").grid(row=2, column=0, columnspan=5, sticky="w", pady=(8, 0))
 
         frame = tb.Frame(self.body)
         frame.pack(fill="both", expand=True)
@@ -82,7 +123,7 @@ class FacturesView(BaseView):
 
         footer = tb.Frame(self.body, padding=(0, 10, 0, 0))
         footer.pack(fill="x")
-        self.count_label = tb.Label(footer, text="0 pièce", font=("Segoe UI", 9, "bold"), bootstyle="secondary")
+        self.count_label = tb.Label(footer, text="0 pièce", font=("Segoe UI", 11, "bold"), bootstyle="secondary")
         self.count_label.pack(side="left")
         buttons = tb.Frame(footer)
         buttons.pack(side="right")
@@ -91,7 +132,7 @@ class FacturesView(BaseView):
             ("💰  Paiement", "success", self.open_payment_dialog),
             ("✕  Supprimer", "danger-outline", self._delete_selected),
         ]:
-            tb.Button(buttons, text=text, bootstyle=style, command=command, padding=(10, 7)).pack(side="left", padx=3)
+            tb.Button(buttons, text=text, bootstyle=style, command=command, padding=(12, 9)).pack(side="left", padx=4)
 
     def refresh(self):
         try:
@@ -99,23 +140,35 @@ class FacturesView(BaseView):
             status = self.status_var.get() if hasattr(self, "status_var") else "Tous les statuts"
             enum_status = None if status == "Tous les statuts" else status
             search = self.search_var.get().strip().lower() if hasattr(self, "search_var") else ""
+            exact = self._parse_amount(self.amount_exact_var.get(), "Le montant exact") if hasattr(self, "amount_exact_var") else None
+            amount_min = self._parse_amount(self.amount_min_var.get(), "Le montant minimum") if hasattr(self, "amount_min_var") else None
+            amount_max = self._parse_amount(self.amount_max_var.get(), "Le montant maximum") if hasattr(self, "amount_max_var") else None
+            if amount_min is not None and amount_max is not None and amount_min > amount_max:
+                raise ValueError("Le montant minimum ne peut pas être supérieur au montant maximum.")
+
             self.factures = rechercher_factures(statut=enum_status)
             if search:
                 self.factures = [f for f in self.factures if search in str(f.numero).lower() or search in str(getattr(f.fournisseur, "nom", "")).lower()]
+            if exact is not None:
+                self.factures = [f for f in self.factures if abs(abs(float(f.montant or 0)) - exact) <= 0.005]
+            if amount_min is not None:
+                self.factures = [f for f in self.factures if abs(float(f.montant or 0)) >= amount_min]
+            if amount_max is not None:
+                self.factures = [f for f in self.factures if abs(float(f.montant or 0)) <= amount_max]
+        except ValueError as exc:
+            if hasattr(self, "count_label"):
+                self.count_label.configure(text=str(exc))
+            return
         except Exception as exc:
             messagebox.showerror("Erreur", f"Impossible de charger les pièces.\n\n{exc}")
             return
+
         rows = []
         for f in self.factures:
             type_piece = getattr(f, "type_piece", "Facture")
             montant = float(f.montant or 0)
             fournisseur_nom = getattr(f.fournisseur, "nom", "") if f.fournisseur else ""
-            rows.append((
-                f.id, type_piece, f.numero, fournisseur_nom,
-                self._format_date(f.date_facture), self._format_date(f.date_echeance),
-                self._format_amount(montant), self._format_amount(f.montant_paye),
-                self._format_amount(f.reste), getattr(f.statut, "value", f.statut)
-            ))
+            rows.append((f.id, type_piece, f.numero, fournisseur_nom, self._format_date(f.date_facture), self._format_date(f.date_echeance), self._format_amount(montant), self._format_amount(f.montant_paye), self._format_amount(f.reste), getattr(f.statut, "value", f.statut)))
         self.table.load_data(rows)
         self.table.autosize()
         self.count_label.configure(text=f"{len(rows)} pièce{'s' if len(rows) != 1 else ''}")
@@ -161,45 +214,33 @@ class FacturesView(BaseView):
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(4, weight=1)
-
-        tb.Label(outer, text="Aperçu avant import", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, sticky="w")
-        tb.Label(outer, text=preview["filename"], bootstyle="secondary").grid(row=1, column=0, sticky="w", pady=(0, 12))
+        tb.Label(outer, text="Aperçu avant import", font=("Segoe UI", 22, "bold")).grid(row=0, column=0, sticky="w")
+        tb.Label(outer, text=preview["filename"], font=("Segoe UI", 11), bootstyle="secondary").grid(row=1, column=0, sticky="w", pady=(0, 12))
 
         summary = tb.Frame(outer)
         summary.grid(row=2, column=0, sticky="ew", pady=(0, 12))
-        for i in range(4):
-            summary.columnconfigure(i, weight=1)
-        cards = [
-            ("À importer", preview["to_import"], "success"),
-            ("Factures", preview["factures"], "primary"),
-            ("Avoirs", preview["avoirs"], "warning"),
-            ("Doublons", preview["duplicates"], "secondary"),
-        ]
+        for i in range(4): summary.columnconfigure(i, weight=1)
+        cards = [("À importer", preview["to_import"], "success"), ("Factures", preview["factures"], "primary"), ("Avoirs", preview["avoirs"], "warning"), ("Doublons", preview["duplicates"], "secondary")]
         for i, (title, value, style) in enumerate(cards):
             card = tb.Frame(summary, padding=(12, 8), bootstyle=style)
             card.grid(row=0, column=i, sticky="ew", padx=3)
-            tb.Label(card, text=str(value), font=("Segoe UI", 18, "bold"), bootstyle=f"{style}-inverse").pack()
-            tb.Label(card, text=title, font=("Segoe UI", 8), bootstyle=f"{style}-inverse").pack()
+            tb.Label(card, text=str(value), font=("Segoe UI", 20, "bold"), bootstyle=f"{style}-inverse").pack()
+            tb.Label(card, text=title, font=("Segoe UI", 10, "bold"), bootstyle=f"{style}-inverse").pack()
 
         net = preview["total_factures"] - preview["total_avoirs"]
-        tb.Label(outer, text=f"Total factures : {self._format_amount(preview['total_factures'])}    •    Total avoirs : {self._format_amount(preview['total_avoirs'])}    •    Dette nette importée : {self._format_amount(net)}", font=("Segoe UI", 10, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 4))
+        tb.Label(outer, text=f"Total factures : {self._format_amount(preview['total_factures'])}    •    Total avoirs : {self._format_amount(preview['total_avoirs'])}    •    Dette nette importée : {self._format_amount(net)}", font=("Segoe UI", 11, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 4))
         suppliers = ", ".join(preview["suppliers"][:12])
-        if len(preview["suppliers"]) > 12:
-            suppliers += f" … (+{len(preview['suppliers']) - 12})"
-        tb.Label(outer, text=f"Fournisseurs détectés : {suppliers or 'aucun'}", bootstyle="secondary").grid(row=3, column=0, sticky="e", pady=(0, 4))
+        if len(preview["suppliers"]) > 12: suppliers += f" … (+{len(preview['suppliers']) - 12})"
+        tb.Label(outer, text=f"Fournisseurs détectés : {suppliers or 'aucun'}", font=("Segoe UI", 10), bootstyle="secondary").grid(row=3, column=0, sticky="e", pady=(0, 4))
 
         details = tb.Frame(outer)
         details.grid(row=4, column=0, sticky="nsew", pady=(8, 0))
         details.columnconfigure(0, weight=1)
         details.rowconfigure(0, weight=1)
-
         columns = ("status", "type", "numero", "date", "fournisseur", "montant", "origine")
         tree = tb.Treeview(details, columns=columns, show="headings", selectmode="browse")
-        headings = {
-            "status": "État", "type": "Type", "numero": "N° pièce", "date": "Date facture",
-            "fournisseur": "Fournisseur", "montant": "Montant", "origine": "Origine"
-        }
-        widths = {"status": 95, "type": 85, "numero": 135, "date": 105, "fournisseur": 190, "montant": 130, "origine": 170}
+        headings = {"status": "État", "type": "Type", "numero": "N° pièce", "date": "Date facture", "fournisseur": "Fournisseur", "montant": "Montant", "origine": "Origine"}
+        widths = {"status": 105, "type": 90, "numero": 145, "date": 115, "fournisseur": 200, "montant": 140, "origine": 180}
         for col in columns:
             tree.heading(col, text=headings[col])
             tree.column(col, width=widths[col], anchor="center" if col not in ("fournisseur", "origine") else "w", stretch=col in ("fournisseur", "origine"))
@@ -207,41 +248,27 @@ class FacturesView(BaseView):
         tree.configure(yscrollcommand=scroll.set)
         tree.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
-
-        tree.tag_configure("avoir", foreground="#b36b00")
-        tree.tag_configure("doublon", foreground="#777777")
-        tree.tag_configure("anomalie", foreground="#c0392b")
-
+        tree.tag_configure("avoir", foreground="#a15c00")
+        tree.tag_configure("doublon", foreground="#4b5b6b")
+        tree.tag_configure("anomalie", foreground="#b42318")
         for row in preview["rows"][:1000]:
             sign = "AVOIR" if row["type_piece"] == "Avoir" else "FACTURE"
             status = row["status"]
             tag = "avoir" if sign == "AVOIR" else ""
-            if "Doublon" in status:
-                tag = "doublon"
-            tree.insert("", "end", values=(
-                status,
-                sign,
-                row["numero"],
-                self._format_date(row.get("date_facture")),
-                row["fournisseur"],
-                self._format_amount(row["montant"]),
-                f"{row['sheet']}:{row['excel_row']}"
-            ), tags=(tag,) if tag else ())
-
+            if "Doublon" in status: tag = "doublon"
+            tree.insert("", "end", values=(status, sign, row["numero"], self._format_date(row.get("date_facture")), row["fournisseur"], self._format_amount(row["montant"]), f"{row['sheet']}:{row['excel_row']}"), tags=(tag,) if tag else ())
         if len(preview["rows"]) > 1000:
             tree.insert("", "end", values=("INFO", "—", "—", "—", "—", "—", f"+{len(preview['rows']) - 1000} lignes"), tags=("doublon",))
-
         if preview["errors"]:
             anomaly_box = tb.Labelframe(outer, text="  ⚠ Anomalies à vérifier  ", padding=8)
             anomaly_box.grid(row=5, column=0, sticky="ew", pady=(8, 0))
             anomaly_text = "\n".join(f"• {error}" for error in preview["errors"][:10])
-            if len(preview["errors"]) > 10:
-                anomaly_text += f"\n• … et {len(preview['errors']) - 10} autre(s)."
-            tb.Label(anomaly_box, text=anomaly_text, bootstyle="danger", justify="left", anchor="w").pack(fill="x")
+            if len(preview["errors"]) > 10: anomaly_text += f"\n• … et {len(preview['errors']) - 10} autre(s)."
+            tb.Label(anomaly_box, text=anomaly_text, bootstyle="danger", justify="left", anchor="w", font=("Segoe UI", 10)).pack(fill="x")
 
         buttons = tb.Frame(outer)
         buttons.grid(row=6, column=0, sticky="ew", pady=(12, 0))
-        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=preview_window.destroy, padding=(12, 7)).pack(side="right", padx=4)
+        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=preview_window.destroy, padding=(12, 9)).pack(side="right", padx=4)
 
         def confirm_import():
             if preview["to_import"] == 0:
@@ -257,37 +284,30 @@ class FacturesView(BaseView):
             preview_window.destroy()
             self.refresh()
             message = f"Import terminé.\n\nPièces importées : {result['imported']}\nFactures : {result['factures']}\nAvoirs : {result['avoirs']}\nDoublons ignorés : {result['skipped']}\nFournisseurs créés : {result['suppliers_created']}"
-            if result["payments_created"]:
-                message += f"\nPaiements historiques : {result['payments_created']}"
-            if result["errors"]:
-                message += "\n\nAnomalies :\n" + "\n".join(result["errors"][:15])
+            if result["payments_created"]: message += f"\nPaiements historiques : {result['payments_created']}"
+            if result["errors"]: message += "\n\nAnomalies :\n" + "\n".join(result["errors"][:15])
             messagebox.showinfo("Import Excel", message)
 
-        tb.Button(buttons, text=f"✓ Importer {preview['to_import']} pièce(s)", bootstyle="success", command=confirm_import, padding=(12, 7)).pack(side="right", padx=4)
+        tb.Button(buttons, text=f"✓ Importer {preview['to_import']} pièce(s)", bootstyle="success", command=confirm_import, padding=(12, 9)).pack(side="right", padx=4)
 
     def _selected(self):
         values = self.table.get_selected()
         if not values:
             messagebox.showwarning("Sélection", "Sélectionnez une pièce.")
             return None
-        try:
-            selected_id = int(values[0])
-        except (TypeError, ValueError):
-            return None
+        try: selected_id = int(values[0])
+        except (TypeError, ValueError): return None
         return next((f for f in self.factures if f.id == selected_id), None)
 
     def _edit_selected(self, _event=None):
         facture = self._selected()
-        if facture:
-            self.open_form_dialog(facture)
+        if facture: self.open_form_dialog(facture)
 
     def _delete_selected(self):
         facture = self._selected()
-        if not facture:
-            return
+        if not facture: return
         libelle = getattr(facture, "type_piece", "Facture").lower()
-        if not messagebox.askyesno("Confirmation", f"Supprimer {libelle} « {facture.numero} » ?"):
-            return
+        if not messagebox.askyesno("Confirmation", f"Supprimer {libelle} « {facture.numero} » ?"): return
         try:
             supprimer_facture(facture.id, self._current_user())
             self.refresh()
@@ -297,8 +317,7 @@ class FacturesView(BaseView):
     def _fournisseur_map(self):
         return {f.nom: f.id for f in self.fournisseurs}
 
-    def open_add_dialog(self):
-        self.open_form_dialog(None)
+    def open_add_dialog(self): self.open_form_dialog(None)
 
     def open_form_dialog(self, facture):
         dialog = tb.Toplevel(self)
@@ -309,121 +328,73 @@ class FacturesView(BaseView):
         dialog.grab_set()
         box = tb.Frame(dialog, padding=25)
         box.pack(fill="both", expand=True)
-        tb.Label(box, text="Modifier la pièce" if facture else "Nouvelle facture / avoir", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 18))
-        tb.Label(box, text="Type de pièce *").pack(anchor="w", pady=(0, 3))
+        tb.Label(box, text="Modifier la pièce" if facture else "Nouvelle facture / avoir", font=("Segoe UI", 22, "bold")).pack(anchor="w", pady=(0, 18))
+        tb.Label(box, text="Type de pièce *", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 3))
         type_var = tk.StringVar(value=getattr(facture, "type_piece", "Facture") if facture else "Facture")
-        tb.Combobox(box, textvariable=type_var, state="readonly", values=["Facture", "Avoir"]).pack(fill="x", pady=(0, 8))
+        tb.Combobox(box, textvariable=type_var, state="readonly", values=["Facture", "Avoir"], font=("Segoe UI", 11)).pack(fill="x", pady=(0, 8))
         entries = {}
-        for label, key, value in [
-            ("Numéro *", "numero", getattr(facture, "numero", "")),
-            ("Date (AAAA-MM-JJ) *", "date_facture", getattr(facture, "date_facture", date.today())),
-            ("Date échéance (AAAA-MM-JJ) *", "date_echeance", getattr(facture, "date_echeance", date.today())),
-            ("Montant *", "montant", abs(getattr(facture, "montant", 0)) if facture else ""),
-            ("Commentaire", "commentaire", getattr(facture, "commentaire", "") or "")
-        ]:
-            tb.Label(box, text=label).pack(anchor="w", pady=(7, 3))
-            e = tb.Entry(box)
-            e.insert(0, str(value))
-            e.pack(fill="x")
-            entries[key] = e
-        tb.Label(box, text="Fournisseur *").pack(anchor="w", pady=(7, 3))
+        for label, key, value in [("Numéro *", "numero", getattr(facture, "numero", "")), ("Date (AAAA-MM-JJ) *", "date_facture", getattr(facture, "date_facture", date.today())), ("Date échéance (AAAA-MM-JJ) *", "date_echeance", getattr(facture, "date_echeance", date.today())), ("Montant *", "montant", abs(getattr(facture, "montant", 0)) if facture else ""), ("Commentaire", "commentaire", getattr(facture, "commentaire", "") or "")]:
+            tb.Label(box, text=label, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(7, 3))
+            e = tb.Entry(box, font=("Segoe UI", 11)); e.insert(0, str(value)); e.pack(fill="x", ipady=4); entries[key] = e
+        tb.Label(box, text="Fournisseur *", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(7, 3))
         names = list(self._fournisseur_map().keys())
         fournisseur_var = tk.StringVar()
-        combo = tb.Combobox(box, textvariable=fournisseur_var, state="readonly", values=names)
-        combo.pack(fill="x")
-        if facture and facture.fournisseur:
-            fournisseur_var.set(facture.fournisseur.nom)
-        elif names:
-            combo.current(0)
-        hint = tb.Label(box, text="", bootstyle="info")
-        hint.pack(anchor="w", pady=(12, 0))
-
-        def update_hint(*_):
-            hint.configure(text="Avoir : le montant sera déduit de la dette fournisseur et ne pourra pas recevoir de paiement." if type_var.get() == "Avoir" else "Facture : le montant augmente la dette fournisseur et peut recevoir des paiements.")
-        type_var.trace_add("write", update_hint)
-        update_hint()
-        buttons = tb.Frame(box)
-        buttons.pack(fill="x", pady=(25, 0))
-        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
-
+        combo = tb.Combobox(box, textvariable=fournisseur_var, state="readonly", values=names, font=("Segoe UI", 11)); combo.pack(fill="x")
+        if facture and facture.fournisseur: fournisseur_var.set(facture.fournisseur.nom)
+        elif names: combo.current(0)
+        hint = tb.Label(box, text="", bootstyle="info", font=("Segoe UI", 10)); hint.pack(anchor="w", pady=(12, 0))
+        def update_hint(*_): hint.configure(text="Avoir : le montant sera déduit de la dette fournisseur et ne pourra pas recevoir de paiement." if type_var.get() == "Avoir" else "Facture : le montant augmente la dette fournisseur et peut recevoir des paiements.")
+        type_var.trace_add("write", update_hint); update_hint()
+        buttons = tb.Frame(box); buttons.pack(fill="x", pady=(25, 0))
+        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy, padding=(12, 9)).pack(side="right", padx=5)
         def save():
             numero = entries["numero"].get().strip()
             if not numero or not fournisseur_var.get():
-                messagebox.showwarning("Validation", "Numéro et fournisseur sont obligatoires.", parent=dialog)
-                return
+                messagebox.showwarning("Validation", "Numéro et fournisseur sont obligatoires.", parent=dialog); return
             try:
                 d_facture = datetime.strptime(entries["date_facture"].get().strip(), "%Y-%m-%d").date()
                 d_echeance = datetime.strptime(entries["date_echeance"].get().strip(), "%Y-%m-%d").date()
                 montant = float(entries["montant"].get().replace(",", "."))
-                if montant <= 0:
-                    raise ValueError("Le montant doit être strictement supérieur à zéro.")
-                if d_echeance < d_facture:
-                    raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
+                if montant <= 0: raise ValueError("Le montant doit être strictement supérieur à zéro.")
+                if d_echeance < d_facture: raise ValueError("La date d'échéance ne peut pas être avant la date de facture.")
                 fournisseur_id = self._fournisseur_map()[fournisseur_var.get()]
-                if facture:
-                    modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
-                else:
-                    ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
+                if facture: modifier_facture(facture.id, fournisseur_id, numero, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
+                else: ajouter_facture(numero, fournisseur_id, d_facture, d_echeance, montant, entries["commentaire"].get().strip(), self._current_user(), type_var.get())
             except Exception as exc:
-                messagebox.showerror("Erreur", f"Impossible d'enregistrer la pièce.\n\n{exc}", parent=dialog)
-                return
-            dialog.destroy()
-            self.refresh()
-        tb.Button(buttons, text="Enregistrer", bootstyle="success", command=save).pack(side="right")
+                messagebox.showerror("Erreur", f"Impossible d'enregistrer la pièce.\n\n{exc}", parent=dialog); return
+            dialog.destroy(); self.refresh()
+        tb.Button(buttons, text="Enregistrer", bootstyle="primary", command=save, padding=(14, 10)).pack(side="right")
 
     def open_payment_dialog(self):
         facture = self._selected()
-        if not facture:
-            return
+        if not facture: return
         if getattr(facture, "type_piece", "Facture") == "Avoir":
-            messagebox.showinfo("Paiement", "Un avoir diminue la dette fournisseur et ne peut pas recevoir de paiement.")
-            return
+            messagebox.showinfo("Paiement", "Un avoir diminue la dette fournisseur et ne peut pas recevoir de paiement."); return
         if facture.reste <= 0:
-            messagebox.showinfo("Paiement", "Cette facture est déjà entièrement payée.")
-            return
-        dialog = tb.Toplevel(self)
-        dialog.title(f"Paiement — {facture.numero}")
-        dialog.geometry("500x430")
-        dialog.resizable(False, False)
-        dialog.transient(self.winfo_toplevel())
-        dialog.grab_set()
-        box = tb.Frame(dialog, padding=25)
-        box.pack(fill="both", expand=True)
-        tb.Label(box, text="Enregistrer un paiement", font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        tb.Label(box, text=f"Facture : {facture.numero}\nReste à payer : {facture.reste:,.2f} DA", font=("Segoe UI", 11)).pack(anchor="w", pady=15)
-        tb.Label(box, text="Montant *").pack(anchor="w", pady=(5, 3))
-        amount = tb.Entry(box)
-        amount.insert(0, str(facture.reste))
-        amount.pack(fill="x")
-        tb.Label(box, text="Mode de paiement").pack(anchor="w", pady=(10, 3))
-        mode = tb.Combobox(box, state="readonly", values=["Espèces", "Chèque", "Virement", "Carte", "Autre"])
-        mode.current(0)
-        mode.pack(fill="x")
-        tb.Label(box, text="Référence").pack(anchor="w", pady=(10, 3))
-        reference = tb.Entry(box)
-        reference.pack(fill="x")
-
+            messagebox.showinfo("Paiement", "Cette facture est déjà entièrement payée."); return
+        dialog = tb.Toplevel(self); dialog.title(f"Paiement — {facture.numero}"); dialog.geometry("500x430"); dialog.resizable(False, False); dialog.transient(self.winfo_toplevel()); dialog.grab_set()
+        box = tb.Frame(dialog, padding=25); box.pack(fill="both", expand=True)
+        tb.Label(box, text="Enregistrer un paiement", font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        tb.Label(box, text=f"Facture : {facture.numero}\nReste à payer : {facture.reste:,.2f} DA", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=15)
+        tb.Label(box, text="Montant *", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(5, 3))
+        amount = tb.Entry(box, font=("Segoe UI", 11)); amount.insert(0, str(facture.reste)); amount.pack(fill="x", ipady=4)
+        tb.Label(box, text="Mode de paiement", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 3))
+        mode = tb.Combobox(box, state="readonly", values=["Espèces", "Chèque", "Virement", "Carte", "Autre"], font=("Segoe UI", 11)); mode.current(0); mode.pack(fill="x")
+        tb.Label(box, text="Référence", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 3))
+        reference = tb.Entry(box, font=("Segoe UI", 11)); reference.pack(fill="x", ipady=4)
         def save():
-            try:
-                ajouter_paiement(facture.id, float(amount.get().replace(",", ".")), mode.get(), reference.get().strip(), self._current_user())
-            except Exception as exc:
-                messagebox.showerror("Paiement refusé", str(exc), parent=dialog)
-                return
-            dialog.destroy()
-            self.refresh()
-
-        buttons = tb.Frame(box)
-        buttons.pack(fill="x", pady=25)
-        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy).pack(side="right", padx=5)
-        tb.Button(buttons, text="Enregistrer le paiement", bootstyle="success", command=save).pack(side="right")
+            try: ajouter_paiement(facture.id, float(amount.get().replace(",", ".")), mode.get(), reference.get().strip(), self._current_user())
+            except Exception as exc: messagebox.showerror("Paiement refusé", str(exc), parent=dialog); return
+            dialog.destroy(); self.refresh()
+        buttons = tb.Frame(box); buttons.pack(fill="x", pady=25)
+        tb.Button(buttons, text="Annuler", bootstyle="secondary-outline", command=dialog.destroy, padding=(12, 9)).pack(side="right", padx=5)
+        tb.Button(buttons, text="Enregistrer le paiement", bootstyle="primary", command=save, padding=(12, 9)).pack(side="right")
 
     def show_payments(self):
         facture = self._selected()
-        if not facture:
-            return
+        if not facture: return
         paiements = liste_paiements(facture.id)
         if not paiements:
-            messagebox.showinfo("Paiements", "Aucun paiement enregistré.")
-            return
+            messagebox.showinfo("Paiements", "Aucun paiement enregistré."); return
         details = "\n".join(f"{self._format_date(p.date_paiement)} — {self._format_amount(p.montant)} — {p.mode_paiement or '-'} — {p.reference or '-'}" for p in paiements)
         messagebox.showinfo(f"Paiements — {facture.numero}", details)
