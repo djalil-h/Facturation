@@ -7,7 +7,7 @@ from services.dashboard_service import DashboardService
 
 
 class TopBar(tb.Frame):
-    """Barre supérieure moderne avec centre de notifications réel et lisible."""
+    """Barre supérieure moderne avec centre de notifications réel."""
 
     def __init__(self, master, app):
         super().__init__(master, bootstyle="light", padding=(18, 11))
@@ -135,37 +135,90 @@ class TopBar(tb.Frame):
             return
         try:
             data = DashboardService.get_dashboard_data()
+            self._notification_data = data
+            count = int(data.get("retard", 0) or 0) + int(data.get("echeance", 0) or 0)
+            self.set_notification_count(count)
+            self._populate_notification_window(data)
         except Exception as exc:
-            tb.dialogs.Messagebox.show_error(f"Impossible de charger les notifications.\n\n{exc}", "Notifications")
-            return
-        self._notification_data = data
-        count = int(data.get("retard", 0) or 0) + int(data.get("echeance", 0) or 0)
-        self.set_notification_count(count)
-        self._populate_notification_window(data)
+            tb.dialogs.Messagebox.show_error(str(exc), "Notifications")
 
     def _populate_notification_window(self, data):
-        for widget in self._notification_summary.winfo_children():
+        if not self._notification_window or not self._notification_window.winfo_exists():
+            return
+
+        summary = self._notification_summary
+        for widget in summary.winfo_children():
             widget.destroy()
-        for widget in self._notification_list_frame.winfo_children():
+        listing = self._notification_list_frame
+        for widget in listing.winfo_children():
             widget.destroy()
 
         retard = int(data.get("retard", 0) or 0)
         echeance = int(data.get("echeance", 0) or 0)
-        self._notification_summary.columnconfigure(0, weight=1)
-        self._notification_summary.columnconfigure(1, weight=1)
-        tb.Label(self._notification_summary, text=f"Retards : {retard}", font=("Segoe UI", 12, "bold"), bootstyle="danger").grid(row=0, column=0, sticky="w", padx=4)
-        tb.Label(self._notification_summary, text=f"Échéances : {echeance}", font=("Segoe UI", 12, "bold"), bootstyle="warning").grid(row=0, column=1, sticky="w", padx=4)
+        total = retard + echeance
 
-        items = []
-        for f in data.get("factures_retard", [])[:50]:
-            items.append(("RETARD", f))
-        for f in data.get("factures_echeance", [])[:50]:
-            items.append(("ÉCHÉANCE", f))
+        summary.columnconfigure(0, weight=1)
+        summary.columnconfigure(1, weight=1)
+        tb.Label(summary, text=f"🔴  {retard} facture(s) en retard", bootstyle="danger", font=("Segoe UI", 12, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        tb.Label(summary, text=f"🟠  {echeance} échéance(s) sous 7 jours", bootstyle="warning", font=("Segoe UI", 12, "bold")).grid(row=0, column=1, sticky="w")
 
-        if not items:
-            tb.Label(self._notification_list_frame, text="Aucune notification.", font=("Segoe UI", 12), bootstyle="success").pack(anchor="w", pady=12)
+        if total == 0:
+            tb.Label(listing, text="✓  Aucune notification en attente", bootstyle="success", font=("Segoe UI", 12)).pack(anchor="center", pady=35)
             return
 
-        for kind, item in items:
-            text = str(item)
-            tb.Label(self._notification_list_frame, text=f"• {kind} — {text}", font=("Segoe UI", 11), wraplength=500, justify="left", anchor="w").pack(fill="x", pady=5)
+        canvas = tk.Canvas(listing, highlightthickness=0, borderwidth=0, bg="#eef2f6")
+        scrollbar = tb.Scrollbar(listing, orient="vertical", command=canvas.yview)
+        inner = tb.Frame(canvas, bootstyle="light")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window_id, width=e.width))
+
+        overdue = []
+        due = []
+        today = datetime.now().date()
+        for supplier in data.get("dettes_fournisseurs", []):
+            supplier_name = supplier.get("fournisseur_nom", "Fournisseur")
+            for piece in supplier.get("factures", []):
+                if piece.get("type_piece") == "Avoir" or float(piece.get("reste", 0) or 0) <= 0:
+                    continue
+                due_date = piece.get("date_echeance")
+                if not due_date:
+                    continue
+                if due_date < today:
+                    overdue.append((due_date, supplier_name, piece.get("numero", ""), piece.get("reste", 0)))
+                else:
+                    due.append((due_date, supplier_name, piece.get("numero", ""), piece.get("reste", 0)))
+
+        overdue.sort(key=lambda x: x[0])
+        due.sort(key=lambda x: x[0])
+
+        if overdue:
+            tb.Label(inner, text="🔴 Factures en retard", font=("Segoe UI", 12, "bold"), bootstyle="danger").pack(anchor="w", pady=(2, 7))
+            for item in overdue[:20]:
+                self._add_notification_row(inner, item, "danger")
+
+        if due:
+            tb.Label(inner, text="🟠 Prochaines échéances", font=("Segoe UI", 12, "bold"), bootstyle="warning").pack(anchor="w", pady=(14, 7))
+            for item in due[:20]:
+                self._add_notification_row(inner, item, "warning")
+
+        if len(overdue) > 20 or len(due) > 20:
+            tb.Label(inner, text="Affichage limité aux 20 notifications les plus pertinentes par catégorie.", font=("Segoe UI", 10), bootstyle="secondary", wraplength=470).pack(anchor="w", pady=(12, 5))
+
+    @staticmethod
+    def _add_notification_row(parent, item, bootstyle):
+        due_date, supplier, number, remaining = item
+        row = tb.Frame(parent, bootstyle="light", padding=(8, 7))
+        row.pack(fill="x", pady=2)
+        row.columnconfigure(1, weight=1)
+        date_text = due_date.strftime("%d/%m/%Y") if hasattr(due_date, "strftime") else str(due_date)
+        tb.Label(row, text=date_text, width=11, bootstyle=bootstyle, font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
+        tb.Label(row, text=f"{supplier}  •  {number}", font=("Segoe UI", 11, "bold"), anchor="w").grid(row=0, column=1, sticky="ew", padx=8)
+        try:
+            amount = f"{float(remaining or 0):,.2f} DA".replace(",", " ")
+        except (TypeError, ValueError):
+            amount = "0.00 DA"
+        tb.Label(row, text=amount, bootstyle=bootstyle, font=("Segoe UI", 11, "bold")).grid(row=0, column=2, sticky="e")
