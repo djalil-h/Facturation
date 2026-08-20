@@ -1,6 +1,7 @@
 import ttkbootstrap as tb
 
 from UI.widgets.brand_logo import BrandLogo
+from config import APP_VERSION
 
 
 class Sidebar(tb.Frame):
@@ -35,7 +36,7 @@ class Sidebar(tb.Frame):
         tb.Separator(self, bootstyle="secondary").pack(fill="x", padx=14)
         self.lbl_user = tb.Label(self, text="Utilisateur : Invité", font=("Segoe UI", 10, "bold"), bootstyle="inverse-dark")
         self.lbl_user.pack(anchor="w", padx=17, pady=(11, 3))
-        self.lbl_version = tb.Label(self, text="Version 2.0", font=("Segoe UI", 9), bootstyle="secondary-inverse")
+        self.lbl_version = tb.Label(self, text=f"Version {APP_VERSION}", font=("Segoe UI", 9), bootstyle="secondary-inverse")
         self.lbl_version.pack(anchor="w", padx=17, pady=(0, 9))
         self.logout_button = tb.Button(
             self, text="⇥   Déconnexion", bootstyle="danger-outline",
