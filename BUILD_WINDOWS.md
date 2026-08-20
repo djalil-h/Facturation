@@ -2,7 +2,7 @@
 
 ## Principe
 
-L'installateur produit `Hamzaoui-Facturation-Setup-v1.0.0.exe`.
+L'installateur produit `Hamzaoui-Facturation-Setup-v2.0.exe`.
 
 Le programme est installé dans `Program Files`, tandis que les données de production restent dans :
 
