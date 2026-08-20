@@ -16,7 +16,7 @@ from pathlib import Path
 
 APP_NAME = "Hamzaoui Facturation"
 PHARMACY_NAME = "Pharmacie Hamzaoui Hamid"
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0"
 
 # ----------------------------------------------------------
 # Répertoires ressources / données
