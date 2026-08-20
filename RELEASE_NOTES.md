@@ -1,8 +1,8 @@
-# Facturation — version 1.0.0
+# Facturation — version 2.0
 
 ## Version de production
 
-Cette version correspond à la première version validée de l'application de gestion de facturation de la Pharmacie Hamzaoui Hamid.
+Cette version correspond à la version 2.0 validée de l'application de gestion de facturation de la Pharmacie Hamzaoui Hamid.
 
 ### Fonctionnalités validées
 
