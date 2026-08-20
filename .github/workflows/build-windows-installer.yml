@@ -62,5 +62,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Hamzaoui-Facturation-Installer
-          path: installer/output/Hamzaoui-Facturation-Setup-v1.0.0.exe
+          path: installer/output/Hamzaoui-Facturation-Setup-v2.0.exe
           if-no-files-found: error
