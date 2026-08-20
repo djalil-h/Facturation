@@ -1,5 +1,5 @@
 #define MyAppName "Hamzaoui Facturation"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0"
 #define MyAppPublisher "Pharmacie Hamzaoui Hamid"
 #define MyAppExeName "HamzaouiFacturation.exe"
 
