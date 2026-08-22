@@ -6,7 +6,7 @@ _original_toplevel = tb.Toplevel
 
 
 class CenteredToplevel(_original_toplevel):
-    """Toplevel centré automatiquement et adapté à la hauteur de l'écran."""
+    """Toplevel centré automatiquement avec une hauteur suffisante pour le contenu."""
 
     def geometry(self, geometry_string=None):
         if geometry_string and "x" in geometry_string and "+" not in geometry_string:
@@ -16,9 +16,14 @@ class CenteredToplevel(_original_toplevel):
                 screen_h = self.winfo_screenheight()
 
                 width = min(requested_w, max(400, screen_w - 40))
-                height = min(requested_h, max(400, screen_h - 80))
 
-                result = super().geometry(f"{width}x{height}")
+                # Les formulaires longs (notamment Nouvelle facture / avoir)
+                # ont besoin d'espace supplémentaire pour afficher leurs boutons.
+                # On agrandit uniquement les grandes fenêtres sans dépasser l'écran.
+                extra_height = 120 if requested_h >= 680 else 0
+                height = min(requested_h + extra_height, max(400, screen_h - 80))
+
+                super().geometry(f"{width}x{height}")
                 self.update_idletasks()
                 x = max(0, (screen_w - width) // 2)
                 y = max(0, (screen_h - height) // 2)
