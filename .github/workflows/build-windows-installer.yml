@@ -8,6 +8,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   build-installer:
     runs-on: windows-latest
@@ -47,6 +50,7 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --windowed --onedir --name HamzaouiFacturation --icon assets/hamzaoui_logo.ico --add-data "assets;assets" --collect-all ttkbootstrap main.py
+          if (-not (Test-Path "dist\HamzaouiFacturation\HamzaouiFacturation.exe")) { throw "Application EXE was not created." }
 
       - name: Install Inno Setup
         shell: pwsh
@@ -57,10 +61,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force installer\output | Out-Null
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\HamzaouiFacturation.iss
+          if (-not (Test-Path "installer\output\Hamzaoui-Facturation-Setup-v2.0.exe")) { throw "Windows installer was not created." }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hamzaoui-Facturation-Installer
+          name: Hamzaoui-Facturation-Installer-v2.0
           path: installer/output/Hamzaoui-Facturation-Setup-v2.0.exe
           if-no-files-found: error
+          retention-days: 30
